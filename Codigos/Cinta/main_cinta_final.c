@@ -889,6 +889,7 @@ void interpretar_comando(void){
 	            if ((Estado == E_activado) &&(sub_Estado == C_esperando_maestro)){
 	                cantidad_pesajes = 0;
 	                sub_Estado = C_pesando;
+	                aviso_esperando_pendiente = 0U;
 	            }
 			}
 			break;
@@ -1222,11 +1223,18 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+
   while (1)
   {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+
+      for (volatile uint32_t i = 0U; i < 1000000U; i++)
+      {
+          __NOP();
+      }
   }
+
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
