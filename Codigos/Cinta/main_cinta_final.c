@@ -46,7 +46,6 @@
 #define E_activado 2
 #define E_error 3
 
-//estados para cuando esta en E_activado
 #define C_andando 0
 #define C_pesando 1
 #define C_detenida 2
@@ -66,15 +65,17 @@
 #define PESO_DETECCION  30000
 #define PESO_LIBRE      20000
 
-#define PESO_MIN_1  100000
-#define PESO_MAX_1  150000
-#define PESO_MIN_2  150001
-#define PESO_MAX_2  300000
-#define PESO_MIN_3  300001
-#define PESO_MAX_3  400000
+#define PESO_MIN_1  45000
+#define PESO_MAX_1  55000
+#define PESO_MIN_2  95000
+#define PESO_MAX_2  105000
+#define PESO_MIN_3  145000
+#define PESO_MAX_3  155000
 
 #define SENSOR_ANTIRREBOTE_MS 1000U
 #define FIFO_TAMANO 10
+#define SENSOR_FILTRO_MS 30U
+
 typedef struct
 {
     uint8_t datos[FIFO_TAMANO];
@@ -86,6 +87,7 @@ typedef struct
 
 #define RS485_RESPUESTA_DELAY_MS       5U
 
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -96,8 +98,8 @@ typedef struct
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t Estado;
-uint8_t sub_Estado;
+volatile uint8_t Estado;
+volatile uint8_t sub_Estado;
 
 uint8_t rx_byte;
 volatile uint8_t recibiendo = 0;
@@ -126,12 +128,16 @@ FIFO cola_servo1 = {0};
 FIFO cola_servo2 = {0};
 FIFO cola_servo3 = {0};
 
-volatile uint8_t eventos_sensor1 = 0;
-volatile uint8_t eventos_sensor2 = 0;
-volatile uint8_t eventos_sensor3 = 0;
 uint32_t ultimo_sensor1 = 0;
 uint32_t ultimo_sensor2 = 0;
 uint32_t ultimo_sensor3 = 0;
+
+volatile uint8_t sensor1_pendiente = 0U;
+volatile uint32_t tick_sensor1 = 0U;
+volatile uint8_t sensor2_pendiente = 0U;
+volatile uint32_t tick_sensor2 = 0U;
+volatile uint8_t sensor3_pendiente = 0U;
+volatile uint32_t tick_sensor3 = 0U;
 
 static uint8_t aviso_esperando_pendiente = 0U;
 static uint16_t aviso_esperando_secuencia = 0U;
@@ -145,8 +151,9 @@ static uint16_t aviso_peso_decigramos = 0U;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-//void interpretar_comando(void);
-//void enviar_estado_uart(void);
+void maquina_estados(void);
+void interpretar_comando(void);
+void enviar_estado_uart(void);
 void Set_DutyCycle_DC_PWM(uint16_t valor_pwm);
 void Servo_Angle(uint8_t servo,uint16_t ang);
 void desactivar(void);
@@ -157,13 +164,9 @@ uint8_t Obtener_Destino(int32_t peso);
 void Procesar_Sensor1(void);
 void Procesar_Sensor2(void);
 void Procesar_Sensor3(void);
-
 static void procesar_rs485_cinta(void);
-static void uart_enviar_texto(const char *texto);
-
-static HAL_StatusTypeDef cinta_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l);
-static void cinta_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado, uint8_t codigo);
-
+static HAL_StatusTypeDef cinta_enviar_rs485(uint8_t destino,uint8_t comando,uint8_t param_h,uint8_t param_l);
+static void cinta_responder_resultado(uint8_t origen,uint8_t respuesta,uint8_t comando_solicitado,uint8_t codigo);
 static void cinta_generar_aviso_esperando_maestro(void);
 static void cinta_generar_aviso_peso(int32_t peso_mg);
 
@@ -207,15 +210,15 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_USART1_UART_Init();
-  //MX_IWDG_Init();
+  MX_IWDG_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  //sprintf(buffer_tx, "Iniciando...\r\n");
-  //HAL_UART_Transmit(&huart3, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
+  HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+  sprintf(buffer_tx, "Iniciando...\r\n");
+  HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
 
-
-  if (RS485_Init(&huart1, RS485_DE_GPIO_Port, RS485_DE_Pin, ID_CINTA) != HAL_OK)
+  if (RS485_Init(&huart3, RS485_DE_GPIO_Port,RS485_DE_Pin,ID_CINTA) != HAL_OK)
   {
       Error_Handler();
   }
@@ -223,22 +226,25 @@ int main(void)
   //Estado inicial
   HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
-  Estado = E_desactivado;
+  Estado= E_desactivado;
 
   HX711_Init();
 
-  //apagar motor de la cinta
   HAL_GPIO_WritePin(GPIOB, DC_IN1_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, DC_IN2_Pin, GPIO_PIN_RESET);
   Set_DutyCycle_DC_PWM(0);
 
-  //inicializar los servos
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
   __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, PULSE_REPOSO);
   __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, PULSE_REPOSO);
   __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, PULSE_REPOSO);
+
+  uint32_t ahora = HAL_GetTick();
+  ultimo_sensor1 = ahora - SENSOR_ANTIRREBOTE_MS;
+  ultimo_sensor2 = ahora - SENSOR_ANTIRREBOTE_MS;
+  ultimo_sensor3 = ahora - SENSOR_ANTIRREBOTE_MS;
 
 
   /* USER CODE END 2 */
@@ -252,216 +258,17 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  procesar_rs485_cinta();
 
-	  //para la uart local, se podria activar para la verificacion local
-	  /*if (comando_listo == 1) {
+	  if (comando_listo == 1) {
 		  comando_listo = 0;
 		  interpretar_comando();
-	  }*/
-	  switch(Estado){
-	  	  case E_desactivado:
-	  		  break;
-		  case E_configurando:
-			  break;
-		  case E_activado:
-			      if (eventos_sensor1 == 1){
-			          eventos_sensor1 = 0;
-			          Procesar_Sensor1();
-			      }
-			      if (eventos_sensor2 == 1){
-			          eventos_sensor2 = 0;
-			          Procesar_Sensor2();
-			      }
-			      if (eventos_sensor3 == 1){
-			          eventos_sensor3 = 0;
-			          Procesar_Sensor3();
-			      }
-			  switch(sub_Estado){
-			  	  case C_detenida:
-			  		  //espera a pasar a C_andando
-			  		  break;
-			  	case C_andando:
-			  	{
-			  	    HAL_StatusTypeDef estado_hx711;
-			  	    estado_hx711 = HX711_WeighNonBlocking(&weight);
+	  }
 
-			  	    if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR) //si hay un error
-			  	    {
-			  	        desactivar();
-			  	        Estado = E_error;
+	  maquina_estados();
 
-			  	        //aviso por la uart local
-			  	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-			  	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-			  	        break;
-			  	    }
-			  	    if (estado_hx711 == HAL_BUSY) //todavia no tiene disponible una lectura nueva
-			  	    {
-			  	        break;
-			  	    }
-			  	    if (weight >= PESO_DETECCION) //cuando el peso supera el umbral de deteccion
-			  	    {
-			  	        cantidad_pesajes = 0;
-
-			  	        rampa_pwm_objetivo = PWM_C_detenido;
-			  	        rampa_paso = 10;
-			  	        rampa_retardo_ms = 10;
-			  	        rampa_ultimo_tick = HAL_GetTick();
-
-			  	        sub_Estado_siguiente = C_esperando_maestro;
-			  	        sub_Estado = C_desacelerando;
-			  	    }
-
-			  	    break;
-			  	}
-	 		 	 case C_pesando:
-	 		 		switch (Verificar_Peso_Por_Pasos(&weight)){
-	 		 		    case 1: //peso estable y terminado
-	 		 		    {
-	 		 		    	uint8_t destino = Obtener_Destino(weight);
-
-	 		 		    	if (destino != 0)
-	 		 		    	{
-	 		 		    	    if (FIFO_Agregar(&cola_servo1, destino) == 0)
-	 		 		    	    {
-	 		 		    	        desactivar();
-	 		 		    	        Estado = E_error;
-
-	 		 		    	        //aviso UART LOCAL
-	 		 		    	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-	 		 		    	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-	 		 		    	        break;
-	 		 		    	    }
-	 		 		    	}
-
-	 		 		    	//Aviso uart local
-	 		 		        snprintf(buffer_tx,sizeof(buffer_tx),"Peso: %ld\r\n",(long)weight);
-	 		 		        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-
-                            //genera el evento para el maestro
-                            cinta_generar_aviso_peso(weight);
-
-	 		 		        rampa_pwm_objetivo = PWM_C_andando;
-	 		 		        rampa_paso = 10; //paso para llegar al objetivo
-	 		 		        rampa_retardo_ms = 10; //tiempo por paso
-	 		 		        rampa_ultimo_tick = HAL_GetTick();
-
-	 		 		        sub_Estado_siguiente = C_esperando_reinicio;
-	 		 		        sub_Estado = C_acelerando;
-
-	 		 		        tiempo_fin_pesaje = HAL_GetTick();
-	 		 		        break;
-	 		 		    }
-	 		 		    case 2:
-	 		 		        //Peso inestable
-	 		 		        break;
-	 		 		    case 3:
-	 		 		        //Todavía faltan pesajes
-	 		 		        break;
-	 		 		    case 0:
-	 		 		    default:
-	 		 		        desactivar();
-	 		 		        Estado = E_error;
-
-	 		 		        //Aviso UART local
-		 		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
-		 		 	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-	 		 		        break;
-	 		 		}
-	 		 		 break;
-	 		 		case C_esperando_reinicio:
-	 		 		{
-	 		 		    if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1500) //espera 1.5s
-	 		 		    {
-	 		 		        HAL_StatusTypeDef estado_hx711;
-	 		 		        estado_hx711 = HX711_WeighNonBlocking(&weight);
-
-	 		 		        if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR)
-	 		 		        {
-	 		 		            desactivar();
-	 		 		            Estado = E_error;
-
-	 		 		            //Aviso UART local
-	 		 		            snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-	 		 		            HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-	 		 		        }
-	 		 		        else if ((estado_hx711 == HAL_OK) &&(weight < PESO_LIBRE)) //si el peso cae por debajo de 20gr toma como que la botella abandono el luga
-	 		 		        {
-	 		 		            sub_Estado = C_andando;
-	 		 		        }
-	 		 		    }
-	 		 		    break;
-	 		 		}
-
-	 		 	//los dos estados usan el mismo codigo (acelerando o desacelerando)
-				case C_desacelerando:
-				case C_acelerando:
-					if (HAL_GetTick() - rampa_ultimo_tick >= rampa_retardo_ms)
-					{
-						if (valor_pwm_actual < rampa_pwm_objetivo) //aceleramos
-						{
-							if ((rampa_pwm_objetivo - valor_pwm_actual) <= rampa_paso) //si estamos a menos del paso del objetivo, establecemos la velocidad objetivo
-							{
-								Set_DutyCycle_DC_PWM(rampa_pwm_objetivo);
-							} else
-							{
-								Set_DutyCycle_DC_PWM(valor_pwm_actual + rampa_paso); //aumentamos de a 10
-							}
-						}
-						else if (valor_pwm_actual > rampa_pwm_objetivo) //frena
-						{
-							if ((valor_pwm_actual - rampa_pwm_objetivo) <= rampa_paso)
-							{
-								Set_DutyCycle_DC_PWM(rampa_pwm_objetivo);
-							} else
-							{
-								Set_DutyCycle_DC_PWM(valor_pwm_actual - rampa_paso);
-							}
-						}
-
-						rampa_ultimo_tick = HAL_GetTick();
-
-						if (valor_pwm_actual == rampa_pwm_objetivo)
-						{
-							if (rampa_pwm_objetivo == PWM_C_detenido)
-							{
-								Set_DutyCycle_DC_PWM(0);
-
-
-			 		 	        snprintf(buffer_tx,sizeof(buffer_tx),":DETENIDO\r\n");
-			 		 	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-							}
-
-							sub_Estado = sub_Estado_siguiente;
-                            if (sub_Estado == C_esperando_maestro)
-                            {
-                                cinta_generar_aviso_esperando_maestro();
-                            }
-						}
-					}
-					break;
-				case C_esperando_maestro:
-					break;
-
-				default:
-				    desactivar();
-				    Estado = E_error;
-				    break;
-	 		 }
-	 		 break;
-	 	 case E_error:
-	 		 break;
-	 	 default:
-	 		 desactivar();
-	 		 Estado=E_error;
-
-	 	     snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
-	 	     HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-	 		 break;
-  	  }
-	 /* if (HAL_IWDG_Refresh(&hiwdg) != HAL_OK)
+	  if (HAL_IWDG_Refresh(&hiwdg) != HAL_OK)
 	  {
 	      Error_Handler();
-	  }*/
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -507,56 +314,211 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void maquina_estados(void){
+	switch(Estado){
+		  	  case E_desactivado:
+		  		  break;
+			  case E_configurando:
+				  break;
+			  case E_activado:
+				  if (sensor1_pendiente != 0U)
+				  {
+				      if ((HAL_GetTick() - tick_sensor1) >= SENSOR_FILTRO_MS)
+				      {
+				          sensor1_pendiente = 0U;
+				          if (HAL_GPIO_ReadPin(Sensor_1_GPIO_Port,Sensor_1_Pin) == GPIO_PIN_RESET) {
+							  Procesar_Sensor1();
+				          }
+				      }
+				  }
+				  if (sensor2_pendiente != 0U)
+				  {
+				      if ((HAL_GetTick() - tick_sensor2) >= SENSOR_FILTRO_MS)
+				      {
+				          sensor2_pendiente = 0U;
+				          if (HAL_GPIO_ReadPin(Sensor_2_GPIO_Port,Sensor_2_Pin) == GPIO_PIN_RESET){
+							  Procesar_Sensor2();
+				          }
+				      }
+				  }
+				  if (sensor3_pendiente != 0U){
+				      if ((HAL_GetTick() - tick_sensor3) >= SENSOR_FILTRO_MS) {
+				          sensor3_pendiente = 0U;
+				          if (HAL_GPIO_ReadPin(Sensor_3_GPIO_Port,Sensor_3_Pin) == GPIO_PIN_RESET){
+							  Procesar_Sensor3();
+				          }
+				      }
+				  }
+				  switch(sub_Estado){
+				  	  case C_detenida:
+				  		  //espera a pasar a C_andando
+				  		  break;
+				  	case C_andando:
+				  	{
+				  	    HAL_StatusTypeDef estado_hx711;
+				  	    estado_hx711 =HX711_WeighNonBlocking(&weight);
+				  	    if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
+				  	        desactivar();
+				  	        Estado = E_error;
+				  	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
+				  	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+				  	        break;
+				  	    }
+				  	    if (estado_hx711 == HAL_BUSY){
+				  	        break;
+				  	    }
+				  	    if (weight >= PESO_DETECCION){
+				  	        cantidad_pesajes = 0;
 
-//cuando la cinta se frena porque llega una botella
+				  	        rampa_pwm_objetivo = PWM_C_detenido;
+				  	        rampa_paso = 10;
+				  	        rampa_retardo_ms = 10;
+				  	        rampa_ultimo_tick = HAL_GetTick();
+				  	        sub_Estado_siguiente = C_esperando_maestro;
+				  	        sub_Estado = C_desacelerando;
+				  	    }
+
+				  	    break;
+				  	}
+		 		 	 case C_pesando:
+		 		 		switch (Verificar_Peso_Por_Pasos(&weight)){
+		 		 		    case 1:
+		 		 		    {
+		 		 		    	uint8_t destino = Obtener_Destino(weight);
+		 		 		    	if (destino != 0){
+		 		 		    	    if (FIFO_Agregar(&cola_servo1, destino) == 0){
+		 		 		    	        desactivar();
+		 		 		    	        Estado = E_error;
+		 		 		    	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
+		 		 		    	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+		 		 		    	        break;
+		 		 		    	    }
+		 		 		    	}
+		 		 		        snprintf(buffer_tx,sizeof(buffer_tx),"Peso: %ld\r\n",(long)weight);
+		 		 		        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+
+	                            /*
+	                             * Verificar_Peso_Por_Pasos dejó en weight
+	                             * el promedio estable definitivo.
+	                             */
+	                            cinta_generar_aviso_peso(weight);
+
+		 		 		        rampa_pwm_objetivo = PWM_C_andando;
+		 		 		        rampa_paso = 10;
+		 		 		        rampa_retardo_ms = 10;
+		 		 		        rampa_ultimo_tick = HAL_GetTick();
+		 		 		        sub_Estado_siguiente = C_esperando_reinicio;
+		 		 		        sub_Estado = C_acelerando;
+		 		 		        tiempo_fin_pesaje = HAL_GetTick();
+		 		 		        break;
+		 		 		    }
+		 		 		    case 2:
+		 		 		        //Peso inestable
+		 		 		        break;
+		 		 		    case 3:
+		 		 		        //Todavía faltan pesajes
+		 		 		        break;
+		 		 		    case 0:
+		 		 		    default:
+		 		 		        desactivar();
+		 		 		        Estado = E_error;
+			 		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
+			 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		 		 		        break;
+		 		 		}
+		 		 		 break;
+		 		 		case C_esperando_reinicio:
+		 		 		{
+		 		 		    if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1500){
+		 		 		        HAL_StatusTypeDef estado_hx711;
+		 		 		        estado_hx711 = HX711_WeighNonBlocking(&weight);
+		 		 		        if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
+		 		 		            desactivar();
+		 		 		            Estado = E_error;
+		 		 		            snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
+		 		 		            HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+		 		 		        }else if ((estado_hx711 == HAL_OK) &&(weight < PESO_LIBRE)){
+		 		 		            sub_Estado = C_andando;
+		 		 		        }
+		 		 		    }
+		 		 		    break;
+		 		 		}
+					case C_desacelerando:
+					case C_acelerando:
+						if (HAL_GetTick() - rampa_ultimo_tick >= rampa_retardo_ms) {
+							if (valor_pwm_actual < rampa_pwm_objetivo) {
+								// Subiendo velocidad
+								if ((rampa_pwm_objetivo - valor_pwm_actual) <= rampa_paso) {
+									Set_DutyCycle_DC_PWM(rampa_pwm_objetivo);
+								} else {
+									Set_DutyCycle_DC_PWM(valor_pwm_actual + rampa_paso);
+								}
+							}
+							else if (valor_pwm_actual > rampa_pwm_objetivo) {
+								// Bajando velocidad
+								if ((valor_pwm_actual - rampa_pwm_objetivo) <= rampa_paso) {
+									Set_DutyCycle_DC_PWM(rampa_pwm_objetivo);
+								} else {
+									Set_DutyCycle_DC_PWM(valor_pwm_actual - rampa_paso);
+								}
+							}
+							rampa_ultimo_tick = HAL_GetTick();
+							if (valor_pwm_actual == rampa_pwm_objetivo) {
+								if (rampa_pwm_objetivo == PWM_C_detenido) {
+									Set_DutyCycle_DC_PWM(0);
+				 		 	        snprintf(buffer_tx,sizeof(buffer_tx),":DETENIDO\r\n");
+				 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+								}
+								sub_Estado = sub_Estado_siguiente;
+
+	                            if (sub_Estado == C_esperando_maestro)
+	                            {
+	                                cinta_generar_aviso_esperando_maestro();
+	                            }
+							}
+						}
+						break;
+					case C_esperando_maestro:
+						break;
+
+					default:
+					    desactivar();
+					    Estado = E_error;
+					    break;
+		 		 }
+		 		 break;
+		 	 case E_error:
+		 		 break;
+		 	 default:
+		 		 desactivar();
+		 		 Estado=E_error;
+		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
+		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		 		 break;
+	  	  }
+}
 static void cinta_generar_aviso_esperando_maestro(void)
 {
-    aviso_esperando_secuencia++; //para diferenciar una botella nueva de un reintento
+    aviso_esperando_secuencia++;
 
-    if (aviso_esperando_secuencia == 0)  //evita utilizar cero después del desbordamiento de 65535 a 0.
-	{
-		aviso_esperando_secuencia = 1;
-	}
-
-    aviso_esperando_pendiente = 1; //evento guardado hasta que el maestro consulte
+    if (aviso_esperando_secuencia == 0){
+        aviso_esperando_secuencia = 1;
+    }
+    aviso_esperando_pendiente = 1;
 }
 
-static void cinta_generar_aviso_peso(int32_t peso_mg)
+static HAL_StatusTypeDef cinta_enviar_rs485(uint8_t destino,uint8_t comando,uint8_t param_h, uint8_t param_l)
 {
-    uint32_t peso_decigramos;
+    HAL_Delay(RS485_RESPUESTA_DELAY_MS);
 
-    if (peso_mg <= 0)
-    {
-        peso_decigramos = 0;
-    }
-    else
-    {
-        peso_decigramos = ((uint32_t)peso_mg + 50U) / 100U;  //convertimos de miligramos a decimas de gramo
-    }
-
-    if (peso_decigramos > 65535U)
-    {
-        peso_decigramos = 65535U;
-    }
-
-    aviso_peso_decigramos = (uint16_t)peso_decigramos;
-    aviso_peso_pendiente = 1;
-
+    return RS485_Send_Packet(destino,comando,param_h,param_l);
 }
 
-static HAL_StatusTypeDef cinta_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l)
+static void cinta_responder_resultado(uint8_t origen,uint8_t respuesta,uint8_t comando_solicitado,uint8_t codigo)
 {
-    HAL_Delay(RS485_RESPUESTA_DELAY_MS); //le da tiempo al maestro de terminar la transmision
-
-    return RS485_Send_Packet(origen, comando, param_h, param_l); //origen es a donde lo mandamos
-}
-
-//para responder con ACK o NACK
-static void cinta_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado,  uint8_t codigo)
-{
-    if (cinta_enviar_rs485(origen, respuesta, comando_solicitado, codigo) != HAL_OK)
-    {
-        uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_RESULTADO\r\n");
+    if (cinta_enviar_rs485(origen,respuesta,comando_solicitado, codigo) != HAL_OK){
+    	  sprintf(buffer_tx,"ERR,RS485,NO_SE_PUDO_ENVIAR_RESULTADO\r\n");
+    	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
     }
 }
 
@@ -568,8 +530,7 @@ static void procesar_rs485_cinta(void)
     uint8_t param_l;
     uint16_t valor;
 
-    if (rs485_paquete_listo == 0)
-    {
+    if (rs485_paquete_listo == 0U){
         return;
     }
 
@@ -578,10 +539,9 @@ static void procesar_rs485_cinta(void)
     param_h = rs485_rx_param_h;
     param_l = rs485_rx_param_l;
 
-    rs485_paquete_listo = 0;
+    rs485_paquete_listo = 0U;
 
-    if (origen != ID_MAESTRO)
-    {
+    if (origen != ID_MAESTRO){
         return;
     }
 
@@ -590,63 +550,57 @@ static void procesar_rs485_cinta(void)
     switch (comando)
     {
         case CMD_PING:
-            if (cinta_enviar_rs485(origen, CMD_PONG, param_h, param_l) != HAL_OK)
-            {
-                //aviso local
-            	uart_enviar_texto("ERROR: RS485,NO_SE_PUDO_ENVIAR_PONG\r\n");
+            if (cinta_enviar_rs485(origen,CMD_PONG,param_h,param_l) != HAL_OK){
+          	  sprintf(buffer_tx,"ERR,RS485,NO_SE_PUDO_ENVIAR_PONG\r\n");
+          	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
             }
             break;
 
         case CMD_PEDIR_ESTADO_CINTA:
-            if (cinta_enviar_rs485(origen, CMD_RESP_ESTADO_CINTA, Estado, sub_Estado) != HAL_OK)
-            {
-                uart_enviar_texto("ERROR: RS485,NO_SE_PUDO_ENVIAR_ESTADO\r\n");
+            if (cinta_enviar_rs485(origen,CMD_RESP_ESTADO_CINTA,Estado,sub_Estado) != HAL_OK){
+          	  sprintf(buffer_tx,"ERR,RS485,NO_SE_PUDO_ENVIAR_ESTADO\r\n");
+          	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
             }
             break;
 
         case CMD_PEDIR_EVENTO_CINTA:
 
-            if (aviso_esperando_pendiente != 0) //prioridad 1: botella esperando maesto
-            {
-                if (cinta_enviar_rs485(origen, CMD_EVENTO_CINTA_ESPERANDO_MAESTRO, (uint8_t)(aviso_esperando_secuencia >> 8U),
-                		(uint8_t)(aviso_esperando_secuencia & 0xFFU)) != HAL_OK)
-                {
-                    uart_enviar_texto("ERROR: RS485,NO_SE_PUDO_ENVIAR_EVENTO_CINTA\r\n");
-                }
-            }
+            if (aviso_esperando_pendiente != 0U) {
+                if (cinta_enviar_rs485(origen,CMD_EVENTO_CINTA_ESPERANDO_MAESTRO,
+                		(uint8_t)(aviso_esperando_secuencia >> 8U),
+						(uint8_t)(aviso_esperando_secuencia & 0xFFU)) != HAL_OK){
+                    snprintf( buffer_tx,sizeof(buffer_tx),
+                        "ERR,RS485,NO_SE_PUDO_ENVIAR_EVENTO_CINTA\r\n" );
 
-            else if (aviso_peso_pendiente != 0) //prioridad 2: pesaje terminado
-            {
-                if (cinta_enviar_rs485(origen, CMD_EVENTO_CINTA_PESAJE_COMPLETO, (uint8_t)(aviso_peso_decigramos >> 8U),
-                        (uint8_t)(aviso_peso_decigramos & 0xFFU)) != HAL_OK)
-                {
-                    uart_enviar_texto("ERROR: RS485,NO_SE_PUDO_ENVIAR_EVENTO_PESO\r\n");
+                    HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,(uint16_t)strlen(buffer_tx),HAL_MAX_DELAY );
                 }
-            }
-            else
-            {
-                if (cinta_enviar_rs485(origen, CMD_RESP_SIN_EVENTO, 0, 0) != HAL_OK)
-                {
-                    uart_enviar_texto("ERROR: RS485,NO_SE_PUDO_RESPONDER_SIN_EVENTO\r\n");
-                }
-            }
+            } else if (aviso_peso_pendiente != 0U){
+                if (cinta_enviar_rs485(origen, CMD_EVENTO_CINTA_PESAJE_COMPLETO,
+                        (uint8_t)(aviso_peso_decigramos >> 8U),
+                        (uint8_t)(aviso_peso_decigramos & 0xFFU)) != HAL_OK){
+                    snprintf( buffer_tx, sizeof(buffer_tx),
+                        "ERR,RS485,NO_SE_PUDO_ENVIAR_EVENTO_PESO\r\n" );
 
+                    HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,(uint16_t)strlen(buffer_tx), HAL_MAX_DELAY);
+                }
+            }else {
+                if (cinta_enviar_rs485(origen, CMD_RESP_SIN_EVENTO,0U,0U) != HAL_OK){
+                    snprintf(buffer_tx,sizeof(buffer_tx),
+                        "ERR,RS485,NO_SE_PUDO_RESPONDER_SIN_EVENTO\r\n");
+
+                    HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, (uint16_t)strlen(buffer_tx), HAL_MAX_DELAY);
+                }
+            }
             break;
 
         case CMD_CINTA_CONFIGURAR:
-            if ((param_h != 0) || (param_l != 1))
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
-            }
-            else if (Estado != E_desactivado)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else
-            {
+            if ((param_h != 0U) || (param_l != 1U)){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_PARAMETRO_INVALIDO);
+            }else if (Estado != E_desactivado){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_ESTADO_INVALIDO);
+            } else {
                 Estado = E_configurando;
-                configuracion_lista = 0;
-
+                configuracion_lista = 0U;
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
             }
             break;
@@ -655,90 +609,74 @@ static void procesar_rs485_cinta(void)
         	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, SET);
         	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, RESET);
 
-            if ((param_h != 0) || (param_l != 1)) //solo acepta :CT1
-            {
+            if ((param_h != 0U) || (param_l != 1U)){
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_PARAMETRO_INVALIDO);
-            }
-            else if (Estado != E_configurando)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else if (HX711_Tare(50U) != HAL_OK) //toma 50 muestras para calcular el valor del tara
-            {
-                configuracion_lista = 0;
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            }else if (Estado != E_configurando){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_ESTADO_INVALIDO);
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            }else if (HX711_Tare(50U) != HAL_OK){
+                configuracion_lista = 0U;
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_SENSOR);
-
-                HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
-            }
-            else
-            {
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            } else {
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, RESET);
             }
-
-            HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
             break;
 
         case CMD_CINTA_CALIBRAR:
         	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, SET);
         	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, RESET);
-
-            if (Estado != E_configurando)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else if (tare == 0)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_SIN_TARA);
-            }
-            else if (valor == 0)
-            {
+            if (Estado != E_configurando) {
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_ESTADO_INVALIDO);
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            }else if (tare == 0){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_SIN_TARA);
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            } else if (valor == 0U){
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_FUERA_DE_RANGO);
-            }
-            else if (HX711_Calibrate((float)valor * 1000.0f, 50U) != HAL_OK) //multiplica por 100 porque trabaja en miligramos
-            {
-                configuracion_lista = 0;
-
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_SENSOR);
-                HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
-            }
-            else
-            {
-                configuracion_lista = 1;
-
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            } else if (HX711_Calibrate((float)valor * 1000.0f,50U) != HAL_OK) {
+                configuracion_lista = 0U;
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_SENSOR);
+            	HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, SET);
+            } else  {
+                configuracion_lista = 1U;
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
                 HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, RESET);
+            	HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, RESET);
             }
             break;
 
         case CMD_CINTA_ACTIVAR:
-            if ((param_h != 0) || (param_l > 1))
-            {
+            if ((param_h != 0U) || (param_l > 1U)){
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
-            }
-            else if (param_l == 0)
-            {
+            } else if (param_l == 0U)   {
                 desactivar();
                 Estado = E_desactivado;
-
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            }  else if (configuracion_lista == 0U){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_SIN_CONFIGURACION);
             }
-            else if (configuracion_lista == 0)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_SIN_CONFIGURACION);
-            }
-            else if ((Estado != E_configurando) && (Estado != E_desactivado))
-            {
+            else if ((Estado != E_configurando) &&(Estado != E_desactivado)) {
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else
-            {
-                HAL_GPIO_WritePin(Led_ON_GPIO_Port, Led_ON_Pin, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(Led_OFF_GPIO_Port, Led_OFF_Pin, GPIO_PIN_RESET);
+            }else{
+                HAL_GPIO_WritePin(Led_ON_GPIO_Port,Led_ON_Pin,GPIO_PIN_SET);
+                HAL_GPIO_WritePin(Led_OFF_GPIO_Port,Led_OFF_Pin, GPIO_PIN_RESET);
 
-                Set_DutyCycle_DC_PWM(0);
+                Set_DutyCycle_DC_PWM(0U);
                 HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-                HAL_GPIO_WritePin(DC_IN1_GPIO_Port, DC_IN1_Pin, GPIO_PIN_SET);
-                HAL_GPIO_WritePin(DC_IN2_GPIO_Port, DC_IN2_Pin, GPIO_PIN_RESET);
+                HAL_GPIO_WritePin(DC_IN1_GPIO_Port,DC_IN1_Pin,GPIO_PIN_SET);
+                HAL_GPIO_WritePin(DC_IN2_GPIO_Port,DC_IN2_Pin,GPIO_PIN_RESET);
 
                 Estado = E_activado;
                 sub_Estado = C_detenida;
@@ -748,122 +686,75 @@ static void procesar_rs485_cinta(void)
             break;
 
         case CMD_CINTA_CONTROL_BANDA:
-            if ((param_h != 0) || (param_l > 2)) //acepta hasta :CB2 unicamente
+            if ((param_h != 0U) || (param_l > 1U))
             {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
-            }
-            else if (Estado != E_activado)
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else if (param_l == 1)
-            {
-                if (sub_Estado != C_detenida)
-                {
-                    cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
-                }
-                else
-                {
-                	//parametros para arrancar
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_PARAMETRO_INVALIDO);
+            }else if (Estado != E_activado){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_ESTADO_INVALIDO);
+            }else if (param_l == 1U) {
+                if (sub_Estado != C_detenida){
+                    cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_OCUPADO);
+                } else {
                     rampa_pwm_objetivo = PWM_C_andando;
-                    rampa_paso = 10;
-                    rampa_retardo_ms = 10;
+                    rampa_paso = 10U;
+                    rampa_retardo_ms = 10U;
                     rampa_ultimo_tick = HAL_GetTick();
-
                     sub_Estado_siguiente = C_andando;
                     sub_Estado = C_acelerando;
 
                     cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
                 }
-            }
-            else if (param_l == 0)
-            {
-                if (valor_pwm_actual <= PWM_C_detenido)
-                {
-                    sub_Estado = C_detenida;
-                    Set_DutyCycle_DC_PWM(0);
-                }
-                else
-                {
+            }else if (param_l == 0U){
+                if (valor_pwm_actual <= PWM_C_detenido){sub_Estado = C_detenida;
+                    Set_DutyCycle_DC_PWM(0U);
+                } else {
                     rampa_pwm_objetivo = PWM_C_detenido;
-                    rampa_paso = 10;
-                    rampa_retardo_ms = 10;
+                    rampa_paso = 10U;
+                    rampa_retardo_ms = 10U;
                     rampa_ultimo_tick = HAL_GetTick();
-
                     sub_Estado_siguiente = C_detenida;
                     sub_Estado = C_desacelerando;
                 }
 
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
             }
-            else //:CB2
-            {
-                if (valor_pwm_actual != 0)
-                {
-                    cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
-                }
-                else
-                {
-                    cantidad_pesajes = 0;
-                    sub_Estado = C_pesando;
-
-                    cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
-                }
-            }
             break;
 
         case CMD_CONFIRMAR_EVENTO_CINTA:
-            if ((aviso_esperando_pendiente != 0) && (valor == aviso_esperando_secuencia)) //evento pendiente?
-            	//¿La secuencia confirmada coincide?
-            {
-                aviso_esperando_pendiente = 0;
+            if ((aviso_esperando_pendiente != 0U) &&(valor == aviso_esperando_secuencia)) {
+                aviso_esperando_pendiente = 0U;
             }
             break;
 
         case CMD_CONFIRMAR_EVENTO_CINTA_PESAJE:
-            if ((aviso_peso_pendiente != 0) && (valor == aviso_peso_decigramos))
+            if ((aviso_peso_pendiente != 0U) &&
+                (valor == aviso_peso_decigramos))
             {
-                aviso_peso_pendiente = 0;
+                aviso_peso_pendiente = 0U;
             }
             break;
 
-        case CMD_CINTA_CONTINUAR_PESAJE: //:CD1
-            if ((param_h != 0) || (param_l != 1))
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
-            }
-            else if ((Estado != E_activado) || (sub_Estado != C_esperando_maestro))
-            {
-                cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ESTADO_INVALIDO);
-            }
-            else
-            {
-            	//reseteamos variables del pesado
-                aviso_esperando_pendiente = 0;
-                cantidad_pesajes = 0;
+        case CMD_CINTA_CONTINUAR_PESAJE:
+            if ((param_h != 0U) || (param_l != 1U)){
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_PARAMETRO_INVALIDO);
+            } else if ((Estado != E_activado) || (sub_Estado != C_esperando_maestro)) {
+                cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_ESTADO_INVALIDO);
+            } else {
+                aviso_esperando_pendiente = 0U;
+                cantidad_pesajes = 0U;
                 sub_Estado = C_pesando;
 
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
             }
             break;
 
-        default: //comando desconocido
-            cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_COMANDO_NO_SOPORTADO);
+        default:
+            cinta_responder_resultado(origen,CMD_RESP_NACK,comando,NACK_COMANDO_NO_SOPORTADO);
             break;
     }
 }
 
-static void uart_enviar_texto(const char *texto) //funcion para mostrar mensajes por la UART local
-{
-    if (texto == NULL)
-    {
-        return;
-    }
-
-    HAL_UART_Transmit(&huart3, (uint8_t *)texto, (uint16_t)strlen(texto), 100U);
-}
-
-/*void enviar_estado_uart(void)
+void enviar_estado_uart(void)
 {
     int longitud;
 
@@ -880,7 +771,7 @@ static void uart_enviar_texto(const char *texto) //funcion para mostrar mensajes
 
     if ((longitud > 0) && (longitud < (int)sizeof(buffer_tx)))
     {
-        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,(uint16_t)longitud,HAL_MAX_DELAY
+        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,(uint16_t)longitud,HAL_MAX_DELAY
         );
     }
 }
@@ -901,13 +792,13 @@ void interpretar_comando(void){
 				HAL_GPIO_WritePin(GPIOB, DC_IN2_Pin, GPIO_PIN_RESET);
 				sub_Estado = C_detenida;
 				snprintf(buffer_tx,sizeof(buffer_tx),"ACTIVADO\r\n");
-				HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+				HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
 		        }
 			}else if(buffer_rx[1]=='0') {
 				desactivar();
 				Estado= E_desactivado;
 				snprintf(buffer_tx,sizeof(buffer_tx),"DESACTIVADO\r\n");
-				HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+				HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
 			}
 			break;
 		case 'C':
@@ -915,7 +806,7 @@ void interpretar_comando(void){
 		        Estado = E_configurando;
 		        configuracion_lista = 0;
 				snprintf(buffer_tx,sizeof(buffer_tx),"CONFIGURANDO...\r\n");
-				HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+				HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
 		    }
 			break;
 		case 'T':
@@ -927,12 +818,12 @@ void interpretar_comando(void){
 					  HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
 				      configuracion_lista = 0;
 					  snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-					  HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+					  HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
 				      break;
 				  }
 				  HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET);
 		          snprintf(buffer_tx, sizeof(buffer_tx),"Tare: %ld\r\n",tare);
-		          HAL_UART_Transmit(&huart3, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
+		          HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
 			}
 		break;
 		case 'F':
@@ -950,19 +841,19 @@ void interpretar_comando(void){
 							HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
 						    configuracion_lista = 0;
 		 		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-		 		 	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
 						    break;
 						}
 						HAL_GPIO_WritePin(GPIOA,Led_ON_Pin | Led_OFF_Pin,GPIO_PIN_RESET);
 						snprintf(buffer_tx, sizeof(buffer_tx),"Factor: %.6f\r\n",calibrationFactor);
-						HAL_UART_Transmit(&huart3, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
+						HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
 					}
 				}else{
 					Estado=E_desactivado;
 					desactivar();
 					configuracion_lista=0;
  		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: NO TARA\r\n");
- 		 	        HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+ 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
 				}
 			}
 		break;
@@ -991,11 +882,6 @@ void interpretar_comando(void){
 		                sub_Estado = C_desacelerando;
 		            }
 		        }
-		    }else if (buffer_rx[1] == '2'){
-		        if ((Estado == E_activado) &&(valor_pwm_actual == 0)) {
-		            cantidad_pesajes = 0;
-		            sub_Estado = C_pesando;
-		        }
 		    }
 		    break;
 		case 'D':
@@ -1012,20 +898,16 @@ void interpretar_comando(void){
 		default:
 			break;
 	}
-}*/
+}
 
 void Set_DutyCycle_DC_PWM(uint16_t valor_pwm)
 {
-	if (valor_pwm <= 1000) //usa una escala de 0 a 1000
-	{
-		//el contador del timer trabaja de 0 a 99
-	    TIM1->CCR1 = (uint16_t)(((uint32_t)valor_pwm * TIM1->ARR) / 1000); //convertimos en la esccala del timer
-	    valor_pwm_actual = valor_pwm;
+	if (valor_pwm <= 1000){
+	        TIM1->CCR1 = (uint16_t)(((uint32_t)valor_pwm * TIM1->ARR) / 1000);
+	    	valor_pwm_actual=valor_pwm;
 	}
 }
-
 void desactivar(void){
-	//prende led de apagado
 	HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
 
@@ -1056,14 +938,17 @@ void desactivar(void){
     cola_servo3.salida = 0;
     cola_servo3.cantidad = 0;
 
-    eventos_sensor1 = 0;
-    eventos_sensor2 = 0;
-    eventos_sensor3 = 0;
-
     aviso_esperando_pendiente = 0U;
     aviso_peso_pendiente = 0U;
-}
 
+    sensor1_pendiente = 0U;
+    sensor2_pendiente = 0U;
+    sensor3_pendiente = 0U;
+    tick_sensor1 = 0U;
+    tick_sensor2 = 0U;
+    tick_sensor3 = 0U;
+
+}
 uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
 {
     int64_t suma = 0;
@@ -1072,41 +957,34 @@ uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
     float desviacion;
     int32_t nueva_muestra;
     HAL_StatusTypeDef estado;
-
     estado = HX711_WeighNonBlocking(&nueva_muestra);
-
     if (estado == HAL_BUSY)
     {
-        return 3;  //no hay una nueva medición disponible.
+        return 3;//no hay dato
     }
     if (estado != HAL_OK)
     {
-        cantidad_pesajes = 0;  //error
+        cantidad_pesajes = 0;//error
         return 0;
     }
-
-    pesos_estabilidad[cantidad_pesajes] = nueva_muestra; //armamos las 10
+    pesos_estabilidad[cantidad_pesajes] = nueva_muestra;
     cantidad_pesajes++;
 
     if (cantidad_pesajes < 10)
     {
-        return 3; //3 = todavía faltan muestras
+        return 3; //faltan muestras
     }
-
     peso_minimo = pesos_estabilidad[0];
     peso_maximo = pesos_estabilidad[0];
-
     for (uint8_t i = 0; i < 10; i++)
     {
         suma += pesos_estabilidad[i];
-        if (pesos_estabilidad[i] < peso_minimo)
-        {
-            peso_minimo = pesos_estabilidad[i]; //buscamos la mas pequeña
+        if (pesos_estabilidad[i] < peso_minimo) {
+            peso_minimo = pesos_estabilidad[i];
         }
 
-        if (pesos_estabilidad[i] > peso_maximo)
-        {
-            peso_maximo = pesos_estabilidad[i]; //buscamos la mas grande
+        if (pesos_estabilidad[i] > peso_maximo){
+            peso_maximo = pesos_estabilidad[i];
         }
     }
 
@@ -1114,198 +992,224 @@ uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
 
     cantidad_pesajes = 0;
     desviacion = ((float)(peso_maximo - peso_minimo) * 100.0f) /(float)(*peso_promedio);
-    if (desviacion > 5.0f)
-    {
-        return 2; // desviacion alta por peso inestable
+    if (desviacion > 5.0f){
+        return 2; // desviacion alta
     }
-
-    return 1; //pesaje completado
+    return 1; //ok
 }
-
 uint8_t FIFO_Agregar(FIFO *cola, uint8_t valor)
 {
-    if (cola->cantidad >= FIFO_TAMANO) //si la cola esta llena
-    {
+    if (cola->cantidad >= FIFO_TAMANO){
         return 0;
     }
-
     cola->datos[cola->entrada] = valor;
-    cola->entrada++; //mueve el indice de entrada
-
-    if (cola->entrada >= FIFO_TAMANO) //reiniciamos, arreglo circular
-    {
+    cola->entrada++;
+    if (cola->entrada >= FIFO_TAMANO){
         cola->entrada = 0;
     }
-
     cola->cantidad++;
-    return 1; //el dato se agrego correctamente
+    return 1;
 }
-
 uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor)
 {
-    if (cola->cantidad == 0) //si esta vacia
-    {
+    if (cola->cantidad == 0){
         return 0;
     }
-
-    *valor = cola->datos[cola->salida]; //copia el dat mas antiguo en la variable valor
+    *valor = cola->datos[cola->salida];
     cola->salida++;
-
-    if (cola->salida >= FIFO_TAMANO)
-    {
+    if (cola->salida >= FIFO_TAMANO)    {
         cola->salida = 0;
     }
-
     cola->cantidad--;
     return 1;
 }
 
-uint8_t Obtener_Destino(int32_t peso) //determina la salida del objeto
+uint8_t Obtener_Destino(int32_t peso)
 {
-    if ((peso >= PESO_MIN_1) && (peso <= PESO_MAX_1))
-    {
+    if ((peso >= PESO_MIN_1) &&(peso <= PESO_MAX_1)){
     	objetos_ok ++;
-        return 1; //destino 1
-
-    } else if ((peso >= PESO_MIN_2) &&(peso <= PESO_MAX_2))
-    {
+        return 1;
+    }else if ((peso >= PESO_MIN_2) &&(peso <= PESO_MAX_2)){
     	objetos_ok ++;
     	return 2;
-    } else if ((peso >= PESO_MIN_3) &&(peso <= PESO_MAX_3))
-    {
+    } else if ((peso >= PESO_MIN_3) &&(peso <= PESO_MAX_3)){
     	objetos_ok ++;
         return 3;
     }
-
     objetos_descarte ++;
     return 4;
 }
 
 void Procesar_Sensor1(void)
 {
-    uint8_t destino;  //variable que guarda en que servo tiene que abrir 1,2,3
-
-    if (FIFO_Sacar(&cola_servo1, &destino) == 0)
-    {
-    	//mensaje UART local
+    uint8_t destino;
+    if (FIFO_Sacar(&cola_servo1, &destino) == 0) {
 		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO1\r\n");
-		HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
     	return;
     }
-
     if (destino == 1)
     {
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_1,PULSE_ABIERTO);
         objetos_control ++;
-    }
-    else
-    {
+    }else{
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_1,PULSE_REPOSO);
-        if (FIFO_Agregar(&cola_servo2, destino) == 0) //si la cola esta llena
-        {
+        if (FIFO_Agregar(&cola_servo2, destino) == 0){
             desactivar();
             Estado = E_error;
-
 			snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-			HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
         }
     }
 }
-
 void Procesar_Sensor2(void)
 {
     uint8_t destino;
-
-    if (FIFO_Sacar(&cola_servo2, &destino) == 0)
-    {
+    if (FIFO_Sacar(&cola_servo2, &destino) == 0){
 		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO2\r\n");
-		HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
     	return;
     }
-
-    if (destino == 2)
-    {
+    if (destino == 2){
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,PULSE_ABIERTO);
         objetos_control ++;
-    }
-    else
-    {
+    }else{
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,PULSE_REPOSO);
-        if (FIFO_Agregar(&cola_servo3, destino) == 0)
-        {
+        if (FIFO_Agregar(&cola_servo3, destino) == 0){
             desactivar();
             Estado = E_error;
-
 			snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-			HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
         }
     }
 }
-
 void Procesar_Sensor3(void)
 {
     uint8_t destino;
-    if (FIFO_Sacar(&cola_servo3, &destino) == 0)
-    {
+    if (FIFO_Sacar(&cola_servo3, &destino) == 0){
 		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO3\r\n");
-		HAL_UART_Transmit(&huart3,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
     	return;
     }
-
-    if (destino == 3)
-    {
+    if (destino == 3){
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,PULSE_ABIERTO);
         objetos_control ++;
-    }
-    else
-    {
+    }else{
         __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,PULSE_REPOSO);
     }
+}
+static void cinta_generar_aviso_peso(int32_t peso_mg)
+{
+    uint32_t peso_decigramos;
+
+    if (peso_mg <= 0){
+        peso_decigramos = 0U;
+    } else {
+        peso_decigramos = ((uint32_t)peso_mg + 50U) / 100U;
+    }
+
+    if (peso_decigramos > 65535U){
+        peso_decigramos = 65535U;
+    }
+
+    aviso_peso_decigramos = (uint16_t)peso_decigramos;
+    aviso_peso_pendiente = 1U;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+	if (Estado != E_activado){
+	    return;
+	}
     uint32_t ahora = HAL_GetTick();
 
     if (GPIO_Pin == Sensor_1_Pin)
     {
-        if ((ahora - ultimo_sensor1) >= SENSOR_ANTIRREBOTE_MS)
+        if (((ahora - ultimo_sensor1) >= SENSOR_ANTIRREBOTE_MS) &&
+            (sensor1_pendiente == 0U))
         {
-            eventos_sensor1 = 1;
             ultimo_sensor1 = ahora;
+            sensor1_pendiente = 1U;
+            tick_sensor1 = ahora;
         }
     }
     else if (GPIO_Pin == Sensor_2_Pin)
     {
-        if ((ahora - ultimo_sensor2) >= SENSOR_ANTIRREBOTE_MS)
+        if (((ahora - ultimo_sensor2) >= SENSOR_ANTIRREBOTE_MS) &&
+            (sensor2_pendiente == 0U))
         {
-            eventos_sensor2 = 1;
             ultimo_sensor2 = ahora;
+            sensor2_pendiente = 1U;
+            tick_sensor2 = ahora;
         }
     }
     else if (GPIO_Pin == Sensor_3_Pin)
     {
-        if ((ahora - ultimo_sensor3) >= SENSOR_ANTIRREBOTE_MS)
+        if (((ahora - ultimo_sensor3) >= SENSOR_ANTIRREBOTE_MS) &&
+            (sensor3_pendiente == 0U))
         {
-            eventos_sensor3 = 1;
             ultimo_sensor3 = ahora;
+            sensor3_pendiente = 1U;
+            tick_sensor3 = ahora;
         }
     }
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if (huart->Instance == USART1)
+    if (huart->Instance == USART3)
     {
         RS485_Rx_Callback(huart);
+    }
+    if (huart->Instance == USART1)
+    {
+        char dato = (char)rx_byte;
+
+        if (dato == ':')
+        {
+            recibiendo = 1;
+            indice = 0;
+        }
+        else if (recibiendo == 1)
+        {
+            switch (dato)
+            {
+                case '\n':
+                case '\r':
+                    buffer_rx[indice] = '\0';
+                    recibiendo = 0;
+                    comando_listo = 1;
+                    break;
+
+                default:
+                    if (indice < BUFFER_SIZE - 1)
+                    {
+                        buffer_rx[indice++] = dato;
+                    }
+                    break;
+            }
+        }
+        // Muy importante:
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
     }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    if (huart->Instance == USART1)
+    if (huart == NULL)
+    {
+        return;
+    }
+
+    if (huart->Instance == USART3)
     {
         RS485_Error_Callback(huart);
+    }
+    else if (huart->Instance == USART1)
+    {
+        recibiendo = 0U;
+        indice = 0U;
+        (void)HAL_UART_Receive_IT(&huart1, &rx_byte, 1U);
     }
 }
 
@@ -1322,10 +1226,6 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  for (volatile int i = 0; i < 1000000; i++)
-	  {
-	  }
   }
   /* USER CODE END Error_Handler_Debug */
 }
