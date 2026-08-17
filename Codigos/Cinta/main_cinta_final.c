@@ -54,7 +54,7 @@
 #define C_desacelerando 5
 #define C_esperando_maestro 6
 
-#define PWM_C_andando 990
+#define PWM_C_andando 600
 #define PWM_C_detenido 250
 
 #define PULSE_MIN       550
@@ -65,16 +65,14 @@
 #define PESO_DETECCION  30000
 #define PESO_LIBRE      20000
 
-#define PESO_MIN_1  45000
-#define PESO_MAX_1  55000
-#define PESO_MIN_2  95000
-#define PESO_MAX_2  105000
-#define PESO_MIN_3  145000
-#define PESO_MAX_3  155000
-
-#define SENSOR_ANTIRREBOTE_MS 1000U
+#define SENSOR_ANTIRREBOTE_MS 10
 #define FIFO_TAMANO 10
-#define SENSOR_FILTRO_MS 30U
+#define SENSOR_FILTRO_MS 1
+
+#define RS485_RESPUESTA_DELAY_MS       5
+
+#define CANTIDAD_CLASIFICADORES 3
+#define TOLERANCIA_PESO_PORCENTAJE 5
 
 typedef struct
 {
@@ -83,11 +81,38 @@ typedef struct
     uint8_t salida;
     uint8_t cantidad;
 } FIFO;
+typedef struct
+{
+    uint8_t id;
 
+    /* Peso que debe seleccionar este destino */
+    int32_t peso_objetivo;
 
-#define RS485_RESPUESTA_DELAY_MS       5U
+    /* Rango calculado automáticamente */
+    int32_t peso_min;
+    int32_t peso_max;
 
+    /* Sensor asociado */
+    GPIO_TypeDef *sensor_port;
+    uint16_t sensor_pin;
 
+    /* Estado del sensor */
+    volatile uint8_t sensor_pendiente;
+    volatile uint32_t tick_sensor;
+    uint32_t ultimo_sensor;
+
+    /* Cola de objetos */
+    FIFO cola;
+
+    /* Servo asociado */
+    TIM_HandleTypeDef *timer;
+    uint32_t pwm_channel;
+
+    /* Posiciones del servo */
+    uint16_t pwm_reposo;
+    uint16_t pwm_abierto;
+
+} CLASIFICADOR;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -124,20 +149,7 @@ uint32_t objetos_ok = 0;
 uint32_t objetos_descarte = 0;
 uint32_t objetos_control = 0;
 
-FIFO cola_servo1 = {0};
-FIFO cola_servo2 = {0};
-FIFO cola_servo3 = {0};
-
-uint32_t ultimo_sensor1 = 0;
-uint32_t ultimo_sensor2 = 0;
-uint32_t ultimo_sensor3 = 0;
-
-volatile uint8_t sensor1_pendiente = 0U;
-volatile uint32_t tick_sensor1 = 0U;
-volatile uint8_t sensor2_pendiente = 0U;
-volatile uint32_t tick_sensor2 = 0U;
-volatile uint8_t sensor3_pendiente = 0U;
-volatile uint32_t tick_sensor3 = 0U;
+CLASIFICADOR clasificadores[CANTIDAD_CLASIFICADORES];
 
 static uint8_t aviso_esperando_pendiente = 0U;
 static uint16_t aviso_esperando_secuencia = 0U;
@@ -155,20 +167,18 @@ void maquina_estados(void);
 void interpretar_comando(void);
 void enviar_estado_uart(void);
 void Set_DutyCycle_DC_PWM(uint16_t valor_pwm);
-void Servo_Angle(uint8_t servo,uint16_t ang);
 void desactivar(void);
 uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio);
 uint8_t FIFO_Agregar(FIFO *cola, uint8_t valor);
 uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor);
 uint8_t Obtener_Destino(int32_t peso);
-void Procesar_Sensor1(void);
-void Procesar_Sensor2(void);
-void Procesar_Sensor3(void);
+void Procesar_Clasificador(uint8_t indice);
 static void procesar_rs485_cinta(void);
 static HAL_StatusTypeDef cinta_enviar_rs485(uint8_t destino,uint8_t comando,uint8_t param_h,uint8_t param_l);
 static void cinta_responder_resultado(uint8_t origen,uint8_t respuesta,uint8_t comando_solicitado,uint8_t codigo);
 static void cinta_generar_aviso_esperando_maestro(void);
 static void cinta_generar_aviso_peso(int32_t peso_mg);
+void Clasificadores_Init(void);
 
 /* USER CODE END PFP */
 
@@ -214,6 +224,7 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  Clasificadores_Init();
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
   sprintf(buffer_tx, "Iniciando...\r\n");
   HAL_UART_Transmit(&huart1, (uint8_t*)buffer_tx, strlen(buffer_tx), HAL_MAX_DELAY);
@@ -234,18 +245,10 @@ int main(void)
   HAL_GPIO_WritePin(GPIOB, DC_IN2_Pin, GPIO_PIN_RESET);
   Set_DutyCycle_DC_PWM(0);
 
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, PULSE_REPOSO);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, PULSE_REPOSO);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, PULSE_REPOSO);
-
-  uint32_t ahora = HAL_GetTick();
-  ultimo_sensor1 = ahora - SENSOR_ANTIRREBOTE_MS;
-  ultimo_sensor2 = ahora - SENSOR_ANTIRREBOTE_MS;
-  ultimo_sensor3 = ahora - SENSOR_ANTIRREBOTE_MS;
-
+  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+      HAL_TIM_PWM_Start(clasificadores[i].timer,clasificadores[i].pwm_channel);
+      __HAL_TIM_SET_COMPARE(clasificadores[i].timer,clasificadores[i].pwm_channel,clasificadores[i].pwm_reposo);
+  }
 
   /* USER CODE END 2 */
 
@@ -314,6 +317,58 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Clasificadores_Init(void)
+{
+    clasificadores[0].id = 1;
+    clasificadores[0].peso_objetivo = 50000;
+    clasificadores[0].sensor_port = Sensor_1_GPIO_Port;
+    clasificadores[0].sensor_pin = Sensor_1_Pin;
+    clasificadores[0].timer = &htim2;
+    clasificadores[0].pwm_channel = TIM_CHANNEL_1;
+    clasificadores[0].pwm_reposo = PULSE_REPOSO;
+    clasificadores[0].pwm_abierto = PULSE_ABIERTO;
+
+    clasificadores[1].id = 2;
+    clasificadores[1].peso_objetivo = 100000;
+    clasificadores[1].sensor_port = Sensor_2_GPIO_Port;
+    clasificadores[1].sensor_pin = Sensor_2_Pin;
+    clasificadores[1].timer = &htim2;
+    clasificadores[1].pwm_channel = TIM_CHANNEL_2;
+    clasificadores[1].pwm_reposo = PULSE_REPOSO;
+    clasificadores[1].pwm_abierto = PULSE_ABIERTO;
+
+    clasificadores[2].id = 3;
+    clasificadores[2].peso_objetivo = 150000;
+    clasificadores[2].sensor_port = Sensor_3_GPIO_Port;
+    clasificadores[2].sensor_pin = Sensor_3_Pin;
+    clasificadores[2].timer = &htim2;
+    clasificadores[2].pwm_channel = TIM_CHANNEL_3;
+    clasificadores[2].pwm_reposo = PULSE_REPOSO;
+    clasificadores[2].pwm_abierto = PULSE_ABIERTO;
+
+    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+    	//configuro peso min y max
+        clasificadores[i].peso_min = clasificadores[i].peso_objetivo -(clasificadores[i].peso_objetivo *
+        							TOLERANCIA_PESO_PORCENTAJE) / 100;
+
+        clasificadores[i].peso_max = clasificadores[i].peso_objetivo +(clasificadores[i].peso_objetivo *
+        							TOLERANCIA_PESO_PORCENTAJE) / 100;
+        //inicio colas
+        clasificadores[i].cola.entrada = 0;
+        clasificadores[i].cola.salida = 0;
+        clasificadores[i].cola.cantidad = 0;
+
+        clasificadores[i].sensor_pendiente = 0;
+        clasificadores[i].tick_sensor = 0;
+        clasificadores[i].ultimo_sensor = 0;
+    }
+    uint32_t ahora = HAL_GetTick();
+    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
+    {
+        clasificadores[i].ultimo_sensor = ahora - SENSOR_ANTIRREBOTE_MS;
+    }
+}
+
 void maquina_estados(void){
 	switch(Estado){
 		  	  case E_desactivado:
@@ -321,31 +376,15 @@ void maquina_estados(void){
 			  case E_configurando:
 				  break;
 			  case E_activado:
-				  if (sensor1_pendiente != 0U)
-				  {
-				      if ((HAL_GetTick() - tick_sensor1) >= SENSOR_FILTRO_MS)
-				      {
-				          sensor1_pendiente = 0U;
-				          if (HAL_GPIO_ReadPin(Sensor_1_GPIO_Port,Sensor_1_Pin) == GPIO_PIN_RESET) {
-							  Procesar_Sensor1();
-				          }
-				      }
-				  }
-				  if (sensor2_pendiente != 0U)
-				  {
-				      if ((HAL_GetTick() - tick_sensor2) >= SENSOR_FILTRO_MS)
-				      {
-				          sensor2_pendiente = 0U;
-				          if (HAL_GPIO_ReadPin(Sensor_2_GPIO_Port,Sensor_2_Pin) == GPIO_PIN_RESET){
-							  Procesar_Sensor2();
-				          }
-				      }
-				  }
-				  if (sensor3_pendiente != 0U){
-				      if ((HAL_GetTick() - tick_sensor3) >= SENSOR_FILTRO_MS) {
-				          sensor3_pendiente = 0U;
-				          if (HAL_GPIO_ReadPin(Sensor_3_GPIO_Port,Sensor_3_Pin) == GPIO_PIN_RESET){
-							  Procesar_Sensor3();
+				  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+				      CLASIFICADOR *c = &clasificadores[i];
+
+				      if (c->sensor_pendiente != 0U){
+				          if ((HAL_GetTick() - c->tick_sensor) >= SENSOR_FILTRO_MS){
+				              c->sensor_pendiente = 0U;
+				              if (HAL_GPIO_ReadPin(c->sensor_port, c->sensor_pin) == GPIO_PIN_RESET){
+				                  Procesar_Clasificador(i);
+				              }
 				          }
 				      }
 				  }
@@ -365,6 +404,7 @@ void maquina_estados(void){
 				  	        break;
 				  	    }
 				  	    if (estado_hx711 == HAL_BUSY){
+				  	    	// no hay dato listo, da otro vuelta al programa sin bloquearlo, hasta que un dato este listo
 				  	        break;
 				  	    }
 				  	    if (weight >= PESO_DETECCION){
@@ -386,7 +426,7 @@ void maquina_estados(void){
 		 		 		    {
 		 		 		    	uint8_t destino = Obtener_Destino(weight);
 		 		 		    	if (destino != 0){
-		 		 		    	    if (FIFO_Agregar(&cola_servo1, destino) == 0){
+		 		 		    		if (FIFO_Agregar(&clasificadores[0].cola, destino) == 0){
 		 		 		    	        desactivar();
 		 		 		    	        Estado = E_error;
 		 		 		    	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
@@ -418,7 +458,7 @@ void maquina_estados(void){
 		 		 		    case 3:
 		 		 		        //Todavía faltan pesajes
 		 		 		        break;
-		 		 		    case 0:
+		 		 		    case 0: //error
 		 		 		    default:
 		 		 		        desactivar();
 		 		 		        Estado = E_error;
@@ -429,7 +469,7 @@ void maquina_estados(void){
 		 		 		 break;
 		 		 		case C_esperando_reinicio:
 		 		 		{
-		 		 		    if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1500){
+		 		 		    if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1000){
 		 		 		        HAL_StatusTypeDef estado_hx711;
 		 		 		        estado_hx711 = HX711_WeighNonBlocking(&weight);
 		 		 		        if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
@@ -439,7 +479,7 @@ void maquina_estados(void){
 		 		 		            HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
 		 		 		        }else if ((estado_hx711 == HAL_OK) &&(weight < PESO_LIBRE)){
 		 		 		            sub_Estado = C_andando;
-		 		 		        }
+		 		 		        } //si esata BUSY, da otra vuelta
 		 		 		    }
 		 		 		    break;
 		 		 		}
@@ -471,8 +511,7 @@ void maquina_estados(void){
 								}
 								sub_Estado = sub_Estado_siguiente;
 
-	                            if (sub_Estado == C_esperando_maestro)
-	                            {
+	                            if (sub_Estado == C_esperando_maestro) {
 	                                cinta_generar_aviso_esperando_maestro();
 	                            }
 							}
@@ -917,9 +956,10 @@ void desactivar(void){
 	HAL_GPIO_WritePin(GPIOB,DC_IN2_Pin,GPIO_PIN_RESET);
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 
-	__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_1, PULSE_REPOSO);
-	__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,PULSE_REPOSO);
-	__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,PULSE_REPOSO);
+	for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
+	{
+	    __HAL_TIM_SET_COMPARE(clasificadores[i].timer, clasificadores[i].pwm_channel, clasificadores[i].pwm_reposo);
+	}
 
     cantidad_pesajes = 0;
     weight = 0;
@@ -927,27 +967,8 @@ void desactivar(void){
     objetos_descarte = 0;
     objetos_control = 0;
 
-    cola_servo1.entrada = 0;
-    cola_servo1.salida = 0;
-    cola_servo1.cantidad = 0;
-
-    cola_servo2.entrada = 0;
-    cola_servo2.salida = 0;
-    cola_servo2.cantidad = 0;
-
-    cola_servo3.entrada = 0;
-    cola_servo3.salida = 0;
-    cola_servo3.cantidad = 0;
-
     aviso_esperando_pendiente = 0U;
     aviso_peso_pendiente = 0U;
-
-    sensor1_pendiente = 0U;
-    sensor2_pendiente = 0U;
-    sensor3_pendiente = 0U;
-    tick_sensor1 = 0U;
-    tick_sensor2 = 0U;
-    tick_sensor3 = 0U;
 
 }
 uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
@@ -992,6 +1013,9 @@ uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
     *peso_promedio = (int32_t)(suma / 10);
 
     cantidad_pesajes = 0;
+    if (*peso_promedio == 0) {
+        return 2; // error de estabilidad
+    }
     desviacion = ((float)(peso_maximo - peso_minimo) * 100.0f) /(float)(*peso_promedio);
     if (desviacion > 5.0f){
         return 2; // desviacion alta
@@ -1027,76 +1051,54 @@ uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor)
 
 uint8_t Obtener_Destino(int32_t peso)
 {
-    if ((peso >= PESO_MIN_1) &&(peso <= PESO_MAX_1)){
-    	objetos_ok ++;
-        return 1;
-    }else if ((peso >= PESO_MIN_2) &&(peso <= PESO_MAX_2)){
-    	objetos_ok ++;
-    	return 2;
-    } else if ((peso >= PESO_MIN_3) &&(peso <= PESO_MAX_3)){
-    	objetos_ok ++;
-        return 3;
+    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
+    {
+        if ((peso >= clasificadores[i].peso_min) &&
+            (peso <= clasificadores[i].peso_max))
+        {
+            objetos_ok++;
+            return clasificadores[i].id;
+        }
     }
-    objetos_descarte ++;
-    return 4;
+
+    objetos_descarte++;
+    return (CANTIDAD_CLASIFICADORES +1);
 }
 
-void Procesar_Sensor1(void)
+void Procesar_Clasificador(uint8_t indice)
 {
+    CLASIFICADOR *c = &clasificadores[indice];
+
     uint8_t destino;
-    if (FIFO_Sacar(&cola_servo1, &destino) == 0) {
-		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO1\r\n");
-		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-    	return;
+
+    if (FIFO_Sacar(&c->cola, &destino) == 0){
+
+        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: OBJETO NO CLASIFICADO %u\r\n",c->id);
+        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+        return;
     }
-    if (destino == 1)
-    {
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_1,PULSE_ABIERTO);
-        objetos_control ++;
-    }else{
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_1,PULSE_REPOSO);
-        if (FIFO_Agregar(&cola_servo2, destino) == 0){
-            desactivar();
-            Estado = E_error;
-			snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-			HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+
+    if (destino == c->id){
+    	__HAL_TIM_SET_COMPARE(c->timer,c->pwm_channel, c->pwm_abierto);
+        objetos_control++;
+    } else {
+        __HAL_TIM_SET_COMPARE(c->timer, c->pwm_channel, c->pwm_reposo);
+
+        if (indice + 1 < CANTIDAD_CLASIFICADORES){
+            if (FIFO_Agregar(&clasificadores[indice + 1].cola,destino) == 0){
+                desactivar();
+                Estado = E_error;
+
+                snprintf( buffer_tx, sizeof(buffer_tx), "ERROR: COLA LLENA\r\n");
+                HAL_UART_Transmit( &huart1, (uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY
+                );
+            }
+        } else {
+            /*
+             * Llegó al final sin encontrar su destino.
+             * Es un descarte.
+             */
         }
-    }
-}
-void Procesar_Sensor2(void)
-{
-    uint8_t destino;
-    if (FIFO_Sacar(&cola_servo2, &destino) == 0){
-		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO2\r\n");
-		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-    	return;
-    }
-    if (destino == 2){
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,PULSE_ABIERTO);
-        objetos_control ++;
-    }else{
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,PULSE_REPOSO);
-        if (FIFO_Agregar(&cola_servo3, destino) == 0){
-            desactivar();
-            Estado = E_error;
-			snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-			HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-        }
-    }
-}
-void Procesar_Sensor3(void)
-{
-    uint8_t destino;
-    if (FIFO_Sacar(&cola_servo3, &destino) == 0){
-		snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:OBJETO NO CLASIFICADO3\r\n");
-		HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-    	return;
-    }
-    if (destino == 3){
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,PULSE_ABIERTO);
-        objetos_control ++;
-    }else{
-        __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,PULSE_REPOSO);
     }
 }
 static void cinta_generar_aviso_peso(int32_t peso_mg)
@@ -1119,39 +1121,28 @@ static void cinta_generar_aviso_peso(int32_t peso_mg)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (Estado != E_activado){
-	    return;
-	}
+    if (Estado != E_activado)
+    {
+        return;
+    }
+
     uint32_t ahora = HAL_GetTick();
 
-    if (GPIO_Pin == Sensor_1_Pin)
+    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
     {
-        if (((ahora - ultimo_sensor1) >= SENSOR_ANTIRREBOTE_MS) &&
-            (sensor1_pendiente == 0U))
+        CLASIFICADOR *c = &clasificadores[i];
+
+        if (GPIO_Pin == c->sensor_pin)
         {
-            ultimo_sensor1 = ahora;
-            sensor1_pendiente = 1U;
-            tick_sensor1 = ahora;
-        }
-    }
-    else if (GPIO_Pin == Sensor_2_Pin)
-    {
-        if (((ahora - ultimo_sensor2) >= SENSOR_ANTIRREBOTE_MS) &&
-            (sensor2_pendiente == 0U))
-        {
-            ultimo_sensor2 = ahora;
-            sensor2_pendiente = 1U;
-            tick_sensor2 = ahora;
-        }
-    }
-    else if (GPIO_Pin == Sensor_3_Pin)
-    {
-        if (((ahora - ultimo_sensor3) >= SENSOR_ANTIRREBOTE_MS) &&
-            (sensor3_pendiente == 0U))
-        {
-            ultimo_sensor3 = ahora;
-            sensor3_pendiente = 1U;
-            tick_sensor3 = ahora;
+            if (((ahora - c->ultimo_sensor) >= SENSOR_ANTIRREBOTE_MS) &&
+                (c->sensor_pendiente == 0U))
+            {
+                c->ultimo_sensor = ahora;
+                c->sensor_pendiente = 1U;
+                c->tick_sensor = ahora;
+            }
+
+            break;
         }
     }
 }
