@@ -34,37 +34,37 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := Cinta_polling2
+BUILD_ARTIFACT_NAME := Cinta_final
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-Cinta_polling2.elf \
+Cinta_final.elf \
 
 MAP_FILES += \
-Cinta_polling2.map \
+Cinta_final.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-Cinta_polling2.list \
+Cinta_final.list \
 
 OBJCOPY_HEX += \
-Cinta_polling2.hex \
+Cinta_final.hex \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: Cinta_polling2.elf secondary-outputs
+main-build: Cinta_final.elf secondary-outputs
 
 # Tool invocations
-Cinta_polling2.elf Cinta_polling2.map: $(OBJS) $(USER_OBJS) C:\Users\Fausto\ Caprioli\STM32CubeIDE\workspace_2.1.1\proyecto_final\Cinta_polling2\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Cinta_polling2.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\Fausto Caprioli\STM32CubeIDE\workspace_2.1.1\proyecto_final\Cinta_polling2\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Cinta_polling2.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+Cinta_final.elf Cinta_final.map: $(OBJS) $(USER_OBJS) C:\Users\Fausto\ Caprioli\Documents\GitHub\proyecto_micro\Proyectos\Cinta_final\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Cinta_final.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\Fausto Caprioli\Documents\GitHub\proyecto_micro\Proyectos\Cinta_final\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Cinta_final.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -73,19 +73,19 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Cinta_polling2.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Cinta_polling2.list"
+Cinta_final.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Cinta_final.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Cinta_polling2.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "Cinta_polling2.hex"
+Cinta_final.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "Cinta_final.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) Cinta_polling2.elf Cinta_polling2.hex Cinta_polling2.list Cinta_polling2.map default.size.stdout
+	-$(RM) Cinta_final.elf Cinta_final.hex Cinta_final.list Cinta_final.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX)

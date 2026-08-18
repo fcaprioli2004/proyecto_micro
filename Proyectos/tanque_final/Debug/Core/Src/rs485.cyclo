@@ -1,0 +1,5 @@
+../Core/Src/rs485.c:32:16:RS485_Calculate_CRC8	5
+../Core/Src/rs485.c:56:19:RS485_Init	4
+../Core/Src/rs485.c:81:19:RS485_Send_Packet	4
+../Core/Src/rs485.c:112:6:RS485_Rx_Callback	15
+../Core/Src/rs485.c:169:6:RS485_Error_Callback	5

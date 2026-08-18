@@ -1,5 +1,5 @@
 
-Cinta_polling2.elf:     file format elf32-littlearm
+Cinta_final.elf:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
@@ -29,23 +29,23 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY
  12 .debug_line   000124da  00000000  00000000  0000c205  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_line_str 00000079  00000000  00000000  0001e6df  2**0
+ 13 .debug_line_str 00000081  00000000  00000000  0001e6df  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_info   0000ee9c  00000000  00000000  0001e758  2**0
+ 14 .debug_info   0000ee9c  00000000  00000000  0001e760  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_abbrev 000029f4  00000000  00000000  0002d5f4  2**0
+ 15 .debug_abbrev 000029f4  00000000  00000000  0002d5fc  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_aranges 00000ea0  00000000  00000000  0002ffe8  2**3
+ 16 .debug_aranges 00000ea0  00000000  00000000  0002fff0  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_str    0008d999  00000000  00000000  00030e88  2**0
+ 17 .debug_str    0008d947  00000000  00000000  00030e90  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_rnglists 00000ba0  00000000  00000000  000be821  2**0
+ 18 .debug_rnglists 00000ba0  00000000  00000000  000be7d7  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .debug_macro  00019789  00000000  00000000  000bf3c1  2**0
+ 19 .debug_macro  00019789  00000000  00000000  000bf377  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 20 .comment      00000043  00000000  00000000  000d8b4a  2**0
+ 20 .comment      00000043  00000000  00000000  000d8b00  2**0
                   CONTENTS, READONLY
- 21 .debug_frame  00004cf0  00000000  00000000  000d8b90  2**2
+ 21 .debug_frame  00004cf0  00000000  00000000  000d8b44  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
