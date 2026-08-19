@@ -34,37 +34,37 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := maestro_v11_maqest
+BUILD_ARTIFACT_NAME := maestro_final
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-maestro_v11_maqest.elf \
+maestro_final.elf \
 
 MAP_FILES += \
-maestro_v11_maqest.map \
+maestro_final.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-maestro_v11_maqest.list \
+maestro_final.list \
 
 OBJCOPY_HEX += \
-maestro_v11_maqest.hex \
+maestro_final.hex \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: maestro_v11_maqest.elf secondary-outputs
+main-build: maestro_final.elf secondary-outputs
 
 # Tool invocations
-maestro_v11_maqest.elf maestro_v11_maqest.map: $(OBJS) $(USER_OBJS) C:\Users\Pedro\ Peter\STM32CubeIDE\workspace_2.1.1\maestro_v11_maqest\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "maestro_v11_maqest.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\Pedro Peter\STM32CubeIDE\workspace_2.1.1\maestro_v11_maqest\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="maestro_v11_maqest.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+maestro_final.elf maestro_final.map: $(OBJS) $(USER_OBJS) C:\Users\Fausto\ Caprioli\Documents\GitHub\proyecto_micro\Proyectos\maestro_final\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "maestro_final.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\Fausto Caprioli\Documents\GitHub\proyecto_micro\Proyectos\maestro_final\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="maestro_final.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -73,19 +73,19 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-maestro_v11_maqest.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "maestro_v11_maqest.list"
+maestro_final.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "maestro_final.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-maestro_v11_maqest.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "maestro_v11_maqest.hex"
+maestro_final.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "maestro_final.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) default.size.stdout maestro_v11_maqest.elf maestro_v11_maqest.hex maestro_v11_maqest.list maestro_v11_maqest.map
+	-$(RM) default.size.stdout maestro_final.elf maestro_final.hex maestro_final.list maestro_final.map
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX)
