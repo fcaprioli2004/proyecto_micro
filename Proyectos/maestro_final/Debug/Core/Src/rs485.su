@@ -1,0 +1,6 @@
+../Core/Src/rs485.c:41:13:RS485_Reset_Parser	4	static
+../Core/Src/rs485.c:48:16:RS485_Calculate_CRC8	24	static
+../Core/Src/rs485.c:78:19:RS485_Init	24	static
+../Core/Src/rs485.c:104:19:RS485_Send_Packet	32	static
+../Core/Src/rs485.c:137:6:RS485_Rx_Callback	24	static
+../Core/Src/rs485.c:205:6:RS485_Error_Callback	24	static
