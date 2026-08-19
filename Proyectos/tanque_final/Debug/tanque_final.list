@@ -39,13 +39,13 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  17 .debug_line   0001047d  00000000  00000000  0003167c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008b57d  00000000  00000000  00041af9  2**0
+ 18 .debug_str    0008b57a  00000000  00000000  00041af9  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000cd076  2**0
+ 19 .comment      00000043  00000000  00000000  000cd073  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000039f0  00000000  00000000  000cd0bc  2**2
+ 20 .debug_frame  000039f0  00000000  00000000  000cd0b8  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007e  00000000  00000000  000d0aac  2**0
+ 21 .debug_line_str 0000007a  00000000  00000000  000d0aa8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2458,7 +2458,7 @@ static void maquina_estados_tanque(void)
         if ((lecturas_invalidas >= LECTURAS_INVALIDAS_MAX) && (estado_tanque != TANQUE_ALARMA)) //despues de 5 mediciones malas salta la alama
  8001022:	4b53      	ldr	r3, [pc, #332]	@ (8001170 <maquina_estados_tanque+0x180>)
  8001024:	781b      	ldrb	r3, [r3, #0]
- 8001026:	2b04      	cmp	r3, #4
+ 8001026:	2b0e      	cmp	r3, #14
  8001028:	f240 809d 	bls.w	8001166 <maquina_estados_tanque+0x176>
  800102c:	4b51      	ldr	r3, [pc, #324]	@ (8001174 <maquina_estados_tanque+0x184>)
  800102e:	781b      	ldrb	r3, [r3, #0]
