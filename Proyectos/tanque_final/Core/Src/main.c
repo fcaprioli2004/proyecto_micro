@@ -17,7 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include "main.h" //hola fausto
+#include "main.h" //hola fausto hola peter
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
