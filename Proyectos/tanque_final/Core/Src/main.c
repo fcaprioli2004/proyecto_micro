@@ -60,7 +60,7 @@ typedef enum
 
 /* El HC-SR04 no debe dispararse continuamente. */
 #define CONTROL_TANQUE_PERIODO_MS      70U
-#define LECTURAS_INVALIDAS_MAX         5U
+#define LECTURAS_INVALIDAS_MAX         15U
 #define TIEMPO_MARCHA_SECO_MS          15000U
 
 #define BANDA_PROPORCIONAL_CM          8
