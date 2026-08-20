@@ -216,7 +216,6 @@ int main(void)
     PC_Enviar(":CB0   = DETENER BANDA\r\n");
     PC_Enviar(":CB2   = INICIAR PESAJE MANUAL\r\n");
     PC_Enviar(":CD1   = CONTINUAR PESAJE\r\n");
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -247,9 +246,9 @@ int main(void)
                 if (timeout_inicio_automatico != 0)
 				{
 					inicio_dosif_automatico_pendiente = 0;
+
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
 				}
-
                 else if (consulta_polling == 0)
                 {
                     PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");
@@ -265,13 +264,14 @@ int main(void)
         Maestro_Procesar_Inicio_Dosif_Automatico();
         Maestro_Procesar_Continuacion_Cinta_Automatica();
 
-        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
-        		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
+        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) &&
+                (ack_evento_cinta_pendiente == 0) && (ack_evento_peso_cinta_pendiente == 0) &&
+                (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
                 (continuar_cinta_automatico_pendiente == 0))
-		{
-			pc_comando_listo = 0;
-			PC_Procesar_Comando();
-		}
+            {
+                pc_comando_listo = 0;
+                PC_Procesar_Comando();
+            }
 
         Maestro_Supervisar_Sistema();
 

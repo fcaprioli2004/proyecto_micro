@@ -125,7 +125,7 @@ HAL_StatusTypeDef RS485_Send_Packet(uint8_t id_destino, uint8_t comando, uint8_t
     /* DE = 1 y /RE = 1: transmitir. */
     HAL_GPIO_WritePin(rs485_ctx.ctrl_port, rs485_ctx.ctrl_pin, GPIO_PIN_SET);
 
-    estado = HAL_UART_Transmit(rs485_ctx.uart, rs485_tx_buffer, RS485_FRAME_SIZE, 20); //transmisión bloqueante de 20 ms
+    estado = HAL_UART_Transmit(rs485_ctx.uart, rs485_tx_buffer, RS485_FRAME_SIZE, 20U); //transmisión bloqueante de 20 ms
 
     //volver a recepcion
     HAL_GPIO_WritePin(rs485_ctx.ctrl_port, rs485_ctx.ctrl_pin, GPIO_PIN_RESET);
@@ -218,5 +218,5 @@ void RS485_Error_Callback(UART_HandleTypeDef *huart)
     huart->RxState = HAL_UART_STATE_READY;
     __HAL_UNLOCK(huart);
 
-    (void)HAL_UART_Receive_IT(rs485_ctx.uart, &rs485_rx_byte, 1);
+    (void)HAL_UART_Receive_IT(rs485_ctx.uart, &rs485_rx_byte, 1U);
 }

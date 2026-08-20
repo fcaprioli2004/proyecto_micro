@@ -37,15 +37,15 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00017418  00000000  00000000  00013067  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0000a996  00000000  00000000  0002a47f  2**0
+ 17 .debug_line   0000a9a3  00000000  00000000  0002a47f  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00082fea  00000000  00000000  00034e15  2**0
+ 18 .debug_str    00082fe6  00000000  00000000  00034e22  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000b7dff  2**0
+ 19 .comment      00000043  00000000  00000000  000b7e08  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000021c4  00000000  00000000  000b7e44  2**2
+ 20 .debug_frame  000021c4  00000000  00000000  000b7e4c  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007f  00000000  00000000  000ba008  2**0
+ 21 .debug_line_str 0000007b  00000000  00000000  000ba010  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -239,7 +239,7 @@ static void Maestro_Confirmar_Evento_Peso_Cinta(void)
  800024c:	2005      	movs	r0, #5
  800024e:	f002 fa5f 	bl	8002710 <HAL_Delay>
 
-    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8U),
+    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8),
  8000252:	4b0c      	ldr	r3, [pc, #48]	@ (8000284 <Maestro_Confirmar_Evento_Peso_Cinta+0x4c>)
  8000254:	881b      	ldrh	r3, [r3, #0]
  8000256:	0a1b      	lsrs	r3, r3, #8
@@ -254,9 +254,9 @@ static void Maestro_Confirmar_Evento_Peso_Cinta(void)
  800026a:	4603      	mov	r3, r0
  800026c:	2b00      	cmp	r3, #0
  800026e:	d104      	bne.n	800027a <Maestro_Confirmar_Evento_Peso_Cinta+0x42>
-            (uint8_t)(ack_evento_peso_cinta_valor & 0xFFU)) == HAL_OK)
+            (uint8_t)(ack_evento_peso_cinta_valor & 0xFF)) == HAL_OK)
     {
-        ack_evento_peso_cinta_pendiente = 0U;
+        ack_evento_peso_cinta_pendiente = 0;
  8000270:	4b02      	ldr	r3, [pc, #8]	@ (800027c <Maestro_Confirmar_Evento_Peso_Cinta+0x44>)
  8000272:	2200      	movs	r2, #0
  8000274:	701a      	strb	r2, [r3, #0]
@@ -306,6 +306,7 @@ int main(void)
   MX_USART3_UART_Init();
  800029e:	f002 f8ed 	bl	800247c <MX_USART3_UART_Init>
   /* USER CODE BEGIN 2 */
+
     if (RS485_Init(&huart3, RS485_DE_GPIO_Port, RS485_DE_Pin, ID_MAESTRO) != HAL_OK)
  80002a2:	2300      	movs	r3, #0
  80002a4:	f44f 5280 	mov.w	r2, #4096	@ 0x1000
@@ -320,7 +321,7 @@ int main(void)
  80002b6:	f001 fe2d 	bl	8001f14 <Error_Handler>
     }
 
-    if (HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1U) != HAL_OK)
+    if (HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1) != HAL_OK)
  80002ba:	2201      	movs	r2, #1
  80002bc:	496a      	ldr	r1, [pc, #424]	@ (8000468 <main+0x1e0>)
  80002be:	486b      	ldr	r0, [pc, #428]	@ (800046c <main+0x1e4>)
@@ -500,12 +501,12 @@ int main(void)
  80003d6:	4b42      	ldr	r3, [pc, #264]	@ (80004e0 <main+0x258>)
  80003d8:	2200      	movs	r2, #0
  80003da:	701a      	strb	r2, [r3, #0]
-
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
  80003dc:	4842      	ldr	r0, [pc, #264]	@ (80004e8 <main+0x260>)
  80003de:	f000 f8d9 	bl	8000594 <PC_Enviar>
  80003e2:	e005      	b.n	80003f0 <main+0x168>
 				}
+
                 else if (consulta_polling == 0)
  80003e4:	79fb      	ldrb	r3, [r7, #7]
  80003e6:	2b00      	cmp	r3, #0
@@ -532,7 +533,7 @@ int main(void)
         Maestro_Procesar_Continuacion_Cinta_Automatica();
  8000404:	f000 fed4 	bl	80011b0 <Maestro_Procesar_Continuacion_Cinta_Automatica>
 
-        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) &&
+        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
  8000408:	4b39      	ldr	r3, [pc, #228]	@ (80004f0 <main+0x268>)
  800040a:	781b      	ldrb	r3, [r3, #0]
  800040c:	b2db      	uxtb	r3, r3
@@ -542,24 +543,21 @@ int main(void)
  8000414:	781b      	ldrb	r3, [r3, #0]
  8000416:	2b00      	cmp	r3, #0
  8000418:	d118      	bne.n	800044c <main+0x1c4>
-                (ack_evento_cinta_pendiente == 0) && (ack_evento_peso_cinta_pendiente == 0) &&
  800041a:	4b36      	ldr	r3, [pc, #216]	@ (80004f4 <main+0x26c>)
  800041c:	781b      	ldrb	r3, [r3, #0]
-        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) &&
  800041e:	2b00      	cmp	r3, #0
  8000420:	d114      	bne.n	800044c <main+0x1c4>
-                (ack_evento_cinta_pendiente == 0) && (ack_evento_peso_cinta_pendiente == 0) &&
+        		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
  8000422:	4b35      	ldr	r3, [pc, #212]	@ (80004f8 <main+0x270>)
  8000424:	781b      	ldrb	r3, [r3, #0]
+        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
  8000426:	2b00      	cmp	r3, #0
  8000428:	d110      	bne.n	800044c <main+0x1c4>
-                (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
+        		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
  800042a:	4b34      	ldr	r3, [pc, #208]	@ (80004fc <main+0x274>)
  800042c:	781b      	ldrb	r3, [r3, #0]
-                (ack_evento_cinta_pendiente == 0) && (ack_evento_peso_cinta_pendiente == 0) &&
  800042e:	2b00      	cmp	r3, #0
  8000430:	d10c      	bne.n	800044c <main+0x1c4>
-                (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
  8000432:	4b2b      	ldr	r3, [pc, #172]	@ (80004e0 <main+0x258>)
  8000434:	781b      	ldrb	r3, [r3, #0]
  8000436:	2b00      	cmp	r3, #0
@@ -567,17 +565,17 @@ int main(void)
                 (continuar_cinta_automatico_pendiente == 0))
  800043a:	4b31      	ldr	r3, [pc, #196]	@ (8000500 <main+0x278>)
  800043c:	781b      	ldrb	r3, [r3, #0]
-                (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
+        		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
  800043e:	2b00      	cmp	r3, #0
  8000440:	d104      	bne.n	800044c <main+0x1c4>
-            {
-                pc_comando_listo = 0;
+		{
+			pc_comando_listo = 0;
  8000442:	4b2b      	ldr	r3, [pc, #172]	@ (80004f0 <main+0x268>)
  8000444:	2200      	movs	r2, #0
  8000446:	701a      	strb	r2, [r3, #0]
-                PC_Procesar_Comando();
+			PC_Procesar_Comando();
  8000448:	f000 fac8 	bl	80009dc <PC_Procesar_Comando>
-            }
+		}
 
         Maestro_Supervisar_Sistema();
  800044c:	f000 f904 	bl	8000658 <Maestro_Supervisar_Sistema>
@@ -5143,7 +5141,7 @@ HAL_StatusTypeDef RS485_Send_Packet(uint8_t id_destino, uint8_t comando, uint8_t
  80020c4:	4618      	mov	r0, r3
  80020c6:	f000 fe8b 	bl	8002de0 <HAL_GPIO_WritePin>
 
-    estado = HAL_UART_Transmit(rs485_ctx.uart, rs485_tx_buffer, RS485_FRAME_SIZE, 20U); //transmisión bloqueante de 20 ms
+    estado = HAL_UART_Transmit(rs485_ctx.uart, rs485_tx_buffer, RS485_FRAME_SIZE, 20); //transmisión bloqueante de 20 ms
  80020ca:	4b0b      	ldr	r3, [pc, #44]	@ (80020f8 <RS485_Send_Packet+0xb4>)
  80020cc:	6818      	ldr	r0, [r3, #0]
  80020ce:	2314      	movs	r3, #20
@@ -5454,7 +5452,7 @@ void RS485_Error_Callback(UART_HandleTypeDef *huart)
  80022a6:	2200      	movs	r2, #0
  80022a8:	f883 2040 	strb.w	r2, [r3, #64]	@ 0x40
 
-    (void)HAL_UART_Receive_IT(rs485_ctx.uart, &rs485_rx_byte, 1U);
+    (void)HAL_UART_Receive_IT(rs485_ctx.uart, &rs485_rx_byte, 1);
  80022ac:	4b05      	ldr	r3, [pc, #20]	@ (80022c4 <RS485_Error_Callback+0x74>)
  80022ae:	681b      	ldr	r3, [r3, #0]
  80022b0:	2201      	movs	r2, #1

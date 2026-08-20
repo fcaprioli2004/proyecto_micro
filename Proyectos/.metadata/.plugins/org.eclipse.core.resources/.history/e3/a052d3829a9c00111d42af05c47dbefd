@@ -247,9 +247,9 @@ int main(void)
                 if (timeout_inicio_automatico != 0)
 				{
 					inicio_dosif_automatico_pendiente = 0;
+
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
 				}
-
                 else if (consulta_polling == 0)
                 {
                     PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");

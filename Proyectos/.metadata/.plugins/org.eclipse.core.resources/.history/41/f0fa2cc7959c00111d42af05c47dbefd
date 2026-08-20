@@ -52,37 +52,37 @@ typedef enum
 static EstadoMaestro estado_maestro = M_INACTIVO;
 
 //variables para recibir comandos por la USART1
-static uint8_t pc_rx_byte = 0;
+static uint8_t pc_rx_byte = 0U;
 static char pc_cmd_buffer[PC_CMD_BUFFER_SIZE];
-static volatile uint8_t pc_cmd_indice = 0;
-static volatile uint8_t pc_recibiendo = 0;
-static volatile uint8_t pc_comando_listo = 0;
+static volatile uint8_t pc_cmd_indice = 0U;
+static volatile uint8_t pc_recibiendo = 0U;
+static volatile uint8_t pc_comando_listo = 0U;
 
 //variables para el RS485
-static uint8_t esperando_respuesta = 0;
-static uint8_t nodo_esperado = 0;
-static uint8_t comando_pendiente = 0;
-static uint16_t valor_pendiente = 0; //guarda el valor de 16 bits enviado en los parámetros
-static uint32_t tick_respuesta = 0;
+static uint8_t esperando_respuesta = 0U;
+static uint8_t nodo_esperado = 0U;
+static uint8_t comando_pendiente = 0U;
+static uint16_t valor_pendiente = 0U; //guarda el valor de 16 bits enviado en los parámetros
+static uint32_t tick_respuesta = 0U;
 static uint32_t timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 static char mensaje_pc[160]; //buffer auxiliar para construir textos con snprintf()
 
-static uint8_t ack_evento_cinta_pendiente = 0;
-static uint16_t ack_evento_cinta_secuencia = 0;
-static uint16_t ultima_secuencia_evento_cinta = 0;
-static uint8_t ultima_secuencia_evento_valida = 0;
+static uint8_t ack_evento_cinta_pendiente = 0U;
+static uint16_t ack_evento_cinta_secuencia = 0U;
+static uint16_t ultima_secuencia_evento_cinta = 0U;
+static uint8_t ultima_secuencia_evento_valida = 0U;
 
-static uint8_t ack_evento_peso_cinta_pendiente = 0;
-static uint16_t ack_evento_peso_cinta_valor = 0;
-static uint8_t peso_evento_ciclo_actual_mostrado = 0;
+static uint8_t ack_evento_peso_cinta_pendiente = 0U;
+static uint16_t ack_evento_peso_cinta_valor = 0U;
+static uint8_t peso_evento_ciclo_actual_mostrado = 0U;
 
-static uint8_t ack_evento_tanque_pendiente = 0;
-static uint16_t ack_evento_tanque_secuencia = 0;
-static uint16_t ultima_secuencia_evento_tanque = 0;
-static uint8_t ultima_secuencia_evento_tanque_valida = 0;
+static uint8_t ack_evento_tanque_pendiente = 0U;
+static uint16_t ack_evento_tanque_secuencia = 0U;
+static uint16_t ultima_secuencia_evento_tanque = 0U;
+static uint8_t ultima_secuencia_evento_tanque_valida = 0U;
 
-static uint8_t inicio_dosif_automatico_pendiente = 0;
-static uint8_t continuar_cinta_automatico_pendiente = 0;
+static uint8_t inicio_dosif_automatico_pendiente = 0U;
+static uint8_t continuar_cinta_automatico_pendiente = 0U;
 static uint8_t ciclo_esperando_receta = 0;
 
 static uint8_t nodo_polling_siguiente = ID_CINTA;
@@ -126,10 +126,10 @@ static void Maestro_Confirmar_Evento_Peso_Cinta(void)
 
     HAL_Delay(5);
 
-    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8),
-            (uint8_t)(ack_evento_peso_cinta_valor & 0xFF)) == HAL_OK)
+    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8U),
+            (uint8_t)(ack_evento_peso_cinta_valor & 0xFFU)) == HAL_OK)
     {
-        ack_evento_peso_cinta_pendiente = 0;
+        ack_evento_peso_cinta_pendiente = 0U;
     }
 }
 
@@ -179,13 +179,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
     if (RS485_Init(&huart3, RS485_DE_GPIO_Port, RS485_DE_Pin, ID_MAESTRO) != HAL_OK)
     {
         Error_Handler();
     }
 
-    if (HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1) != HAL_OK)
+    if (HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1U) != HAL_OK)
     {
         Error_Handler();
     }
@@ -216,7 +215,6 @@ int main(void)
     PC_Enviar(":CB0   = DETENER BANDA\r\n");
     PC_Enviar(":CB2   = INICIAR PESAJE MANUAL\r\n");
     PC_Enviar(":CD1   = CONTINUAR PESAJE\r\n");
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -247,9 +245,9 @@ int main(void)
                 if (timeout_inicio_automatico != 0)
 				{
 					inicio_dosif_automatico_pendiente = 0;
+
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
 				}
-
                 else if (consulta_polling == 0)
                 {
                     PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");
@@ -265,13 +263,14 @@ int main(void)
         Maestro_Procesar_Inicio_Dosif_Automatico();
         Maestro_Procesar_Continuacion_Cinta_Automatica();
 
-        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
-        		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
+        if ((pc_comando_listo != 0) && (esperando_respuesta == 0) &&
+                (ack_evento_cinta_pendiente == 0) && (ack_evento_peso_cinta_pendiente == 0) &&
+                (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
                 (continuar_cinta_automatico_pendiente == 0))
-		{
-			pc_comando_listo = 0;
-			PC_Procesar_Comando();
-		}
+            {
+                pc_comando_listo = 0;
+                PC_Procesar_Comando();
+            }
 
         Maestro_Supervisar_Sistema();
 
