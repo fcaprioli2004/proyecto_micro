@@ -149,6 +149,7 @@ static void detener_bomba_dosificador(void);
 static void procesar_rs485_tanque(void);
 
 static HAL_StatusTypeDef tanque_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l);
+static void tanque_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado,uint8_t codigo);
 
 static void tanque_generar_evento_llenado(void);
 /* USER CODE END PFP */
@@ -311,12 +312,20 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-//para enviar respuestas al maestro, ACKs o NACKs
 static HAL_StatusTypeDef tanque_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l)
 {
     HAL_Delay(RS485_RESPUESTA_DELAY_MS);
 
     return RS485_Send_Packet(origen, comando, param_h, param_l);
+}
+
+//para mandar el ACK o NACK
+static void tanque_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado, uint8_t codigo)
+{
+    if (tanque_enviar_rs485(origen, respuesta, comando_solicitado, codigo) != HAL_OK)
+    {
+        uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_RESULTADO\r\n");
+    }
 }
 
 //crea el evento y lo deja pediente
@@ -425,7 +434,7 @@ static void procesar_rs485_tanque(void)
             else
             {
                 volumen_receta_ml = valor;
-                pulsos_objetivo = (((uint32_t)valor * PULSOS_X100_POR_ML) + 50) / 100;
+                pulsos_objetivo = (((uint32_t)valor * PULSOS_X100_POR_ML) + 50U) / 100U;
                 receta_lista = 1;
 
                 tanque_enviar_rs485(origen, CMD_RESP_ACK, comando, ACK_OK);
@@ -454,11 +463,11 @@ static void procesar_rs485_tanque(void)
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
             }
-            else if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() != 0)) //¿Existe una botella llena todavía colocada?
+            else if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() != 0U)) //¿Existe una botella llena todavía colocada?
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_RETIRE_BOTELLA);
             }
-            else if (evento_llenado_pendiente != 0) //hay un llenado anterior
+            else if (evento_llenado_pendiente != 0U) //hay un llenado anterior
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
             }
@@ -577,7 +586,6 @@ static uint8_t Hay_Botella(void)
     return (HAL_GPIO_ReadPin(SENSOR_BOTELLA_GPIO_Port, SENSOR_BOTELLA_Pin) == GPIO_PIN_RESET) ? 1 : 0; //reset = botella detectada = 1 en este caso
 }
 
-//funcion LOCAL, para inicial el llenado
 static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, realizamos lo mismo en case CMD_TANQUE_CONTROL_DOSIF:
 {
     //uint32_t primask;
@@ -634,7 +642,6 @@ static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, real
     }
 }
 
-//detenemos la bomba y borramos los flags
 static void abortar_dosificacion(void)
 {
     //uint32_t primask = __get_PRIMASK();

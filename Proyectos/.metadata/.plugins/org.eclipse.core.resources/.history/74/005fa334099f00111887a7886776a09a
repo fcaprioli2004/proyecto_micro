@@ -577,7 +577,6 @@ static uint8_t Hay_Botella(void)
     return (HAL_GPIO_ReadPin(SENSOR_BOTELLA_GPIO_Port, SENSOR_BOTELLA_Pin) == GPIO_PIN_RESET) ? 1 : 0; //reset = botella detectada = 1 en este caso
 }
 
-//funcion LOCAL, para inicial el llenado
 static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, realizamos lo mismo en case CMD_TANQUE_CONTROL_DOSIF:
 {
     //uint32_t primask;
@@ -634,7 +633,6 @@ static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, real
     }
 }
 
-//detenemos la bomba y borramos los flags
 static void abortar_dosificacion(void)
 {
     //uint32_t primask = __get_PRIMASK();
