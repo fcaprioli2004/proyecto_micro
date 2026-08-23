@@ -1,0 +1,67 @@
+#ifndef INC_RS485_H_
+#define INC_RS485_H_
+
+#include "main.h" //para la HAL
+
+//direccion de los nodos
+#define ID_MAESTRO          0x00
+#define ID_CINTA            0x01
+#define ID_TANQUE           0x02
+#define ID_BROADCAST        0xFF
+
+/* =========================================================
+ * FORMATO DE LA TRAMA
+ * =========================================================
+ *
+ * Byte 0: START
+ * Byte 1: ID destino
+ * Byte 2: ID origen
+ * Byte 3: comando
+ * Byte 4: parámetro alto
+ * Byte 5: parámetro bajo
+ * Byte 6: CRC-8
+ * Byte 7: END
+ */
+
+#define RS485_FRAME_SIZE    8U
+#define RS485_START_BYTE    0x3AU   /* ':'  */
+#define RS485_END_BYTE      0x0DU   /* '\r' */
+
+/* =========================================================
+ * ÚLTIMO PAQUETE RECIBIDO
+ * =========================================================
+ *
+ * La librería solo publica paquetes dirigidos al ID local o
+ * a ID_BROADCAST. El main debe copiar los datos y después
+ * poner rs485_paquete_listo en 0.
+ */
+
+extern volatile uint8_t rs485_paquete_listo;
+extern volatile uint8_t rs485_rx_destino;
+extern volatile uint8_t rs485_rx_origen;
+extern volatile uint8_t rs485_rx_cmd;
+extern volatile uint8_t rs485_rx_param_h;
+extern volatile uint8_t rs485_rx_param_l;
+
+/* =========================================================
+ * API
+ * ========================================================= */
+
+HAL_StatusTypeDef RS485_Init(
+    UART_HandleTypeDef *huart,
+    GPIO_TypeDef *ctrl_port,
+    uint16_t ctrl_pin,
+    uint8_t id_local
+);
+
+HAL_StatusTypeDef RS485_Send_Packet(
+    uint8_t id_destino,
+    uint8_t comando,
+    uint8_t param_h,
+    uint8_t param_l
+);
+
+void RS485_Rx_Callback(UART_HandleTypeDef *huart);
+void RS485_Error_Callback(UART_HandleTypeDef *huart);
+
+#endif /* INC_RS485_H_ */

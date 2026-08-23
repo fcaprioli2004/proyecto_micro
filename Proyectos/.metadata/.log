@@ -202,3 +202,22 @@ java.util.ConcurrentModificationException
 
 !ENTRY org.eclipse.cdt.core 1 0 2026-08-19 10:26:19.452
 !MESSAGE Indexed 'tanque_final' (25 sources, 118 headers) in 1,51 sec: 10.002 declarations; 52.667 references; 2 unresolved inclusions; 36 syntax errors; 186 unresolved names (0,3 %)
+!SESSION 2026-08-21 17:07:27.129 -----------------------------------------------
+eclipse.buildId=Version 2.1.1
+java.version=21.0.9
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=es_AR
+Command-line arguments:  -os win32 -ws win32 -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2026-08-21 17:07:34.231
+!MESSAGE Log4j2 initialized with config file C:\Users\Pedro Peter\Documents\GitHub\proyecto_micro\Proyectos\.metadata\.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2026-08-21 17:07:41.289
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY com.st.stm32cube.ide.mpu.remote.serial 1 1 2026-08-21 17:07:42.961
+!MESSAGE Executed PowerShell command powershell.exe -Command "Get-CimInstance -ClassName Win32_SerialPort | Select-Object -ExpandProperty DeviceID":
+
+
+!ENTRY com.st.stm32cube.ide.mpu.remote.serial 1 1 2026-08-21 17:07:42.962
+!MESSAGE port: 

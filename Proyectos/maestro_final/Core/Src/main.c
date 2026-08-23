@@ -20,25 +20,27 @@
 
 typedef enum
 {
-    M_INACTIVO = 0,
-    M_ACTIVO,
-    M_ALARMA
+	M_INACTIVO = 0,
+	M_ACTIVO = 1,
+	M_ALARMA = 2
 } EstadoMaestro;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PC_CMD_BUFFER_SIZE       24U
-#define RESPUESTA_TIMEOUT_MS          1000U
-#define RESPUESTA_TIMEOUT_LARGO_MS    15000U //para las operaciones de la cinta que pueden tardar mas
-#define PING_PARAM_H             0x12U
-#define PING_PARAM_L             0x34U
+#define PC_CMD_BUFFER_SIZE       24
 
-#define POLLING_PERIODO_MS            50U
-#define POLLING_TIMEOUT_MS            100U
+#define RESPUESTA_TIMEOUT_MS          1000
+#define RESPUESTA_TIMEOUT_LARGO_MS    15000 //para las operaciones de la cinta que pueden tardar mas
 
-#define SUPERVISION_PERIODO_MS 500U
+#define PING_PARAM_H             0x12
+#define PING_PARAM_L             0x34
+
+#define POLLING_PERIODO_MS            50
+#define POLLING_TIMEOUT_MS            100
+
+#define SUPERVISION_PERIODO_MS 500
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,18 +61,18 @@ static volatile uint8_t pc_recibiendo = 0;
 static volatile uint8_t pc_comando_listo = 0;
 
 //variables para el RS485
-static uint8_t esperando_respuesta = 0;
+static uint8_t esperando_respuesta = 0; //1 → ya mandamos algo
 static uint8_t nodo_esperado = 0;
 static uint8_t comando_pendiente = 0;
-static uint16_t valor_pendiente = 0; //guarda el valor de 16 bits enviado en los parámetros
+static uint16_t valor_pendiente = 0; //guarda el valor de 16 bits que hay en PARAM_L y PARAM_H
 static uint32_t tick_respuesta = 0;
 static uint32_t timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
-static char mensaje_pc[160]; //buffer auxiliar para construir textos con snprintf()
+static char mensaje_pc[160]; //buffer auxiliar para construir textos con snprintf() y mostrar por pantalla
 
 static uint8_t ack_evento_cinta_pendiente = 0;
 static uint16_t ack_evento_cinta_secuencia = 0;
 static uint16_t ultima_secuencia_evento_cinta = 0;
-static uint8_t ultima_secuencia_evento_valida = 0;
+static uint8_t ultima_secuencia_evento_valida = 0;  //para no ejecutar dos veces la misma accion automática
 
 static uint8_t ack_evento_peso_cinta_pendiente = 0;
 static uint16_t ack_evento_peso_cinta_valor = 0;
@@ -91,7 +93,7 @@ static uint32_t tick_polling = 0;
 static uint32_t tick_supervision = 0;
 static uint8_t nodo_supervision_siguiente = ID_TANQUE;
 
-static uint8_t parada_alarma_etapa = 0;
+static uint8_t parada_alarma_etapa = 0; //convierte la parada global en una pequeña secuencia
 
 /* USER CODE END PV */
 
@@ -117,27 +119,10 @@ static const char *Maestro_Nombre_Subestado_Cinta(uint8_t subestado);
 static void Maestro_Confirmar_Evento_Cinta(void);
 static void Maestro_Confirmar_Evento_Peso_Cinta(void);
 
-static void Maestro_Confirmar_Evento_Peso_Cinta(void)
-{
-    if ((ack_evento_peso_cinta_pendiente == 0) || (esperando_respuesta != 0))
-    {
-        return;
-    }
-
-    HAL_Delay(5);
-
-    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8),
-            (uint8_t)(ack_evento_peso_cinta_valor & 0xFF)) == HAL_OK)
-    {
-        ack_evento_peso_cinta_pendiente = 0;
-    }
-}
-
 static void Maestro_Confirmar_Evento_Tanque(void);
 static void Maestro_Procesar_Inicio_Dosif_Automatico(void);
 static void Maestro_Procesar_Continuacion_Cinta_Automatica(void);
 
-static void Maestro_Supervisar_Sistema(void);
 static void Maestro_Entrar_Alarma(const char *motivo);
 static void Maestro_Procesar_Parada_Alarma(void);
 /* USER CODE END PFP */
@@ -226,31 +211,32 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-        Maestro_Procesar_RS485();
+        Maestro_Procesar_RS485(); //recepcion de tramas
 
-        if ((esperando_respuesta != 0) && ((HAL_GetTick() - tick_respuesta) >= timeout_respuesta_ms))
+        if ((esperando_respuesta != 0) && ((HAL_GetTick() - tick_respuesta) >= timeout_respuesta_ms)) //estoy esperando una rta y paso el tiempo?
         {
-                uint8_t consulta_polling;
-                uint8_t timeout_inicio_automatico;
+                uint8_t consulta_polling;  //el que fallo era una consulta automática de eventos? si = 1
+                uint8_t timeout_inicio_automatico;  // intentaba arrancar automáticamente el dosificador? si = 1
 
                 consulta_polling = ((comando_pendiente == CMD_PEDIR_EVENTO_CINTA) || (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE))
                         ? 1: 0;
                 timeout_inicio_automatico = ((comando_pendiente == CMD_TANQUE_CONTROL_DOSIF) && (valor_pendiente == 1) &&
                          (inicio_dosif_automatico_pendiente != 0)) ? 1 : 0;
 
+                //limpiamos los buffers
                 esperando_respuesta = 0;
                 nodo_esperado = 0;
                 comando_pendiente = 0;
                 valor_pendiente = 0;
+
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
-                if (timeout_inicio_automatico != 0)
+                if (timeout_inicio_automatico == 1) //era del inicio del dosif?
 				{
 					inicio_dosif_automatico_pendiente = 0;
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
 				}
-
-                else if (consulta_polling == 0)
+                else if (consulta_polling == 0) //NO era del polling? si era del polling no mostramos nada para no llenar la pantalla
                 {
                     PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");
                 }
@@ -265,6 +251,7 @@ int main(void)
         Maestro_Procesar_Inicio_Dosif_Automatico();
         Maestro_Procesar_Continuacion_Cinta_Automatica();
 
+        //procesar comando del usuario si el RS485 está libre y no hay acciones automáticas importantes pendientes.
         if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
         		(ack_evento_peso_cinta_pendiente == 0) && (ack_evento_tanque_pendiente == 0) && (inicio_dosif_automatico_pendiente == 0) &&
                 (continuar_cinta_automatico_pendiente == 0))
@@ -273,13 +260,7 @@ int main(void)
 			PC_Procesar_Comando();
 		}
 
-        Maestro_Supervisar_Sistema();
-
-        if (estado_maestro == M_ACTIVO)
-        {
-            Maestro_Procesar_Polling();
-        }
-
+        Maestro_Procesar_Polling();
   /* USER CODE END 3 */
 }
 }
@@ -335,13 +316,13 @@ static void PC_Enviar(const char *texto)
     (void)HAL_UART_Transmit(&huart1, (uint8_t *)texto, (uint16_t)strlen(texto), 100U);
 }
 
-static uint8_t PC_Parsear_UInt16(const char *texto, uint16_t *valor) //para convertir texto a numeros
+static uint8_t PC_Parsear_UInt16(const char *texto, uint16_t *valor) //para convertir texto a numeros "1234" → 1234
 {
-    uint32_t acumulado = 0;
+    uint32_t acumulado = 0; //auxiliar para detectar si se pasa del tamaño
 
     if ((texto == NULL) || (valor == NULL) || (*texto == '\0'))
     {
-        return 0U;
+        return 0;
     }
 
     while (*texto != '\0') //recorrer la cadena hasta el final
@@ -353,7 +334,7 @@ static uint8_t PC_Parsear_UInt16(const char *texto, uint16_t *valor) //para conv
             return 0;
         }
 
-        digito = (uint32_t)(*texto - '0');
+        digito = (uint32_t)(*texto - '0');  //conversion a numero
 
         if (acumulado > ((65535 - digito) / 10)) //para no superar el tamañno maximo permitido
         {
@@ -368,91 +349,27 @@ static uint8_t PC_Parsear_UInt16(const char *texto, uint16_t *valor) //para conv
     return 1;
 }
 
-static void Maestro_Supervisar_Sistema(void)
-{
-    uint32_t ahora;
-    uint8_t destino;
-    uint8_t comando;
-
-    if (estado_maestro == M_ALARMA)
-    {
-        return;
-    }
-
-    if (esperando_respuesta != 0)
-    {
-        return;
-    }
-
-    if (pc_comando_listo != 0)
-    {
-        return;
-    }
-
-    ahora = HAL_GetTick();
-
-    if ((ahora - tick_supervision) < SUPERVISION_PERIODO_MS)
-    {
-        return;
-    }
-
-    tick_supervision = ahora;
-
-    if (nodo_supervision_siguiente == ID_TANQUE)
-    {
-        destino = ID_TANQUE;
-        comando = CMD_PEDIR_ESTADO_TANQUE;
-    }
-    else
-    {
-        destino = ID_CINTA;
-        comando = CMD_PEDIR_ESTADO_CINTA;
-    }
-
-    if (RS485_Send_Packet(destino, comando, 0, 0) != HAL_OK)
-    {
-        return;
-    }
-
-    esperando_respuesta = 1;
-    nodo_esperado = destino;
-    comando_pendiente = comando;
-    valor_pendiente = 0;
-    tick_respuesta = HAL_GetTick();
-    timeout_respuesta_ms = POLLING_TIMEOUT_MS;
-
-    //próximo esclavo a supervisar.
-    if (nodo_supervision_siguiente == ID_TANQUE)
-    {
-        nodo_supervision_siguiente = ID_CINTA;
-    }
-    else
-    {
-        nodo_supervision_siguiente = ID_TANQUE;
-    }
-}
-
 static void Maestro_Entrar_Alarma(const char *motivo)
 {
-    if (estado_maestro == M_ALARMA)
+    if (estado_maestro == M_ALARMA) //si ya esta en alarma
     {
         return;
     }
 
     estado_maestro = M_ALARMA;
 
+    //cancela automatismos
     inicio_dosif_automatico_pendiente = 0;
     continuar_cinta_automatico_pendiente = 0;
     ciclo_esperando_receta = 0;
 
-    parada_alarma_etapa = 1;
+    parada_alarma_etapa = 1;    //bandera para iniciar la parada
 
     PC_Enviar("\r\n*** SISTEMA EN ALARMA ***\r\n");
 
     if (motivo != NULL)
     {
         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "CAUSA: %s\r\n", motivo);
-
         PC_Enviar(mensaje_pc);
     }
 }
@@ -464,18 +381,14 @@ static void Maestro_Procesar_Parada_Alarma(void)
         return;
     }
 
-    /*
-     * Esperar a que termine la comunicación actual.
-     */
-    if (esperando_respuesta != 0U)
+    if (esperando_respuesta != 0) //si hay un mensaje esperando, volvems
     {
         return;
     }
 
     switch (parada_alarma_etapa)
     {
-    //detemer dosificador
-        case 1:
+        case 1: //detener dosificador
 
             if (RS485_Send_Packet(ID_TANQUE, CMD_TANQUE_CONTROL_DOSIF, 0, 0) == HAL_OK)
             {
@@ -483,18 +396,17 @@ static void Maestro_Procesar_Parada_Alarma(void)
                 nodo_esperado = ID_TANQUE;
                 comando_pendiente = CMD_TANQUE_CONTROL_DOSIF;
                 valor_pendiente = 0;
+
                 tick_respuesta = HAL_GetTick();
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
                 parada_alarma_etapa = 2;
-
                 PC_Enviar("PARADA -> TANQUE: ABORTAR DOSIFICACION\r\n");
             }
 
             break;
 
-            //desactivar cinta
-        case 2:
+        case 2: //desactivar cinta
 
             if (RS485_Send_Packet(ID_CINTA, CMD_CINTA_ACTIVAR, 0, 0) == HAL_OK)
             {
@@ -502,11 +414,11 @@ static void Maestro_Procesar_Parada_Alarma(void)
                 nodo_esperado = ID_CINTA;
                 comando_pendiente = CMD_CINTA_ACTIVAR;
                 valor_pendiente = 0;
+
                 tick_respuesta = HAL_GetTick();
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
                 parada_alarma_etapa = 3;
-
                 PC_Enviar("PARADA -> CINTA: DESACTIVAR\r\n");
             }
 
@@ -535,6 +447,7 @@ static void Maestro_Enviar_Trama(uint8_t destino, uint8_t comando, uint8_t param
         return;
     }
 
+    //comprobamos que no existan confirmaciones o acciones AUTOM. pendientes
     if ((ack_evento_cinta_pendiente != 0) ||
         (ack_evento_peso_cinta_pendiente != 0) ||
         (ack_evento_tanque_pendiente != 0) ||
@@ -553,6 +466,7 @@ static void Maestro_Enviar_Trama(uint8_t destino, uint8_t comando, uint8_t param
         return;
     }
 
+    //si se envia correctamente, guardamos todos estos datos en memoria para comprobar y sabemos perfectamente que respuesta esperamos
     esperando_respuesta = 1;
     nodo_esperado = destino;
     comando_pendiente = comando;
@@ -579,7 +493,7 @@ static void PC_Procesar_Comando(void)
     char nodo;
     char comando;
     uint8_t destino;
-    uint16_t valor = 0U;
+    uint16_t valor = 0;
     const char *parametro;
 
     if ((pc_cmd_buffer[0] == '\0') || (pc_cmd_buffer[1] == '\0'))
@@ -617,7 +531,7 @@ static void PC_Procesar_Comando(void)
             break;
 
         default:
-            PC_Enviar("ERROR: NODO INVALIDO. USE T O C\r\n");
+            PC_Enviar("ERROR: NODO INVALIDO. USE T, C o M\r\n");
             return;
     }
 
@@ -688,7 +602,7 @@ static void PC_Procesar_Comando(void)
                 return;
             }
 
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_DOSIF, 0U, 0U, "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
+            Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_DOSIF, 0, 0, "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
             break;
 
         case 'S':
@@ -698,7 +612,7 @@ static void PC_Procesar_Comando(void)
                 return;
             }
 
-            if (PC_Parsear_UInt16(parametro, &valor) == 0U) //se convierte a numero usando parsear
+            if (PC_Parsear_UInt16(parametro, &valor) == 0) //se convierte a numero usando parsear
             {
                 PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
                 return;
@@ -732,7 +646,7 @@ static void PC_Procesar_Comando(void)
                 parada_alarma_etapa = 0;
                 estado_maestro = M_INACTIVO;
 
-                PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n"                );
+                PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n");
                 break;
             }
 
@@ -952,43 +866,26 @@ static void PC_Procesar_Comando(void)
 static void Maestro_Confirmar_Evento_Cinta(void) //confirma que el maestro recibió el evento para que la cinta no lo mande mas
 {
 	//Hay un evento de la cinta pendiente de confirmar y el maestro no está esperando la respuesta de otra solicitud.
-    if ((ack_evento_cinta_pendiente == 0) || (esperando_respuesta != 0))
+    if ((ack_evento_cinta_pendiente == 0) || (esperando_respuesta == 1))
     {
         return;
     }
 
     HAL_Delay(5);
 
-    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA, (uint8_t)(ack_evento_cinta_secuencia >> 8U),
-            (uint8_t)(ack_evento_cinta_secuencia & 0xFFU)) == HAL_OK)
+    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA, (uint8_t)(ack_evento_cinta_secuencia >> 8),
+            (uint8_t)(ack_evento_cinta_secuencia & 0xFF)) == HAL_OK)
     {
         ack_evento_cinta_pendiente = 0;
-    }
-}
-
-
-static void Maestro_Confirmar_Evento_Tanque(void)
-{
-    if ((ack_evento_tanque_pendiente == 0) || (esperando_respuesta != 0))
-    {
-        return;
-    }
-
-    HAL_Delay(5U);
-
-    if (RS485_Send_Packet(ID_TANQUE, CMD_CONFIRMAR_EVENTO_TANQUE, (uint8_t)(ack_evento_tanque_secuencia >> 8U),
-            (uint8_t)(ack_evento_tanque_secuencia & 0xFFU)) == HAL_OK)
-    {
-        ack_evento_tanque_pendiente = 0U;
     }
 }
 
 static void Maestro_Procesar_Inicio_Dosif_Automatico(void)
 {
 	if (estado_maestro != M_ACTIVO)
-	    {
-	        return;
-	    }
+	{
+		return;
+	}
 
     HAL_StatusTypeDef estado;
 
@@ -997,19 +894,19 @@ static void Maestro_Procesar_Inicio_Dosif_Automatico(void)
         return;
     }
 
-    if ((ack_evento_cinta_pendiente != 0) || (esperando_respuesta != 0))
+    if ((ack_evento_cinta_pendiente != 0) || (esperando_respuesta != 0)) //espera que se haya enviado el ACK y que este libre
     {
         return;
     }
 
     HAL_Delay(5);
 
-    //mandamos comando como :TI1
+    //mandamos comando :TI1
     estado = RS485_Send_Packet(ID_TANQUE, CMD_TANQUE_CONTROL_DOSIF, 0, 1);
 
     if (estado != HAL_OK)
     {
-        inicio_dosif_automatico_pendiente = 0U;
+        inicio_dosif_automatico_pendiente = 0;
         PC_Enviar("ERROR: NO SE PUDO INICIAR AUTOMATICAMENTE "
             "EL DOSIFICADOR. USE :TI1\r\n");
         return;
@@ -1019,10 +916,27 @@ static void Maestro_Procesar_Inicio_Dosif_Automatico(void)
     nodo_esperado = ID_TANQUE;
     comando_pendiente = CMD_TANQUE_CONTROL_DOSIF;
     valor_pendiente = 1;
+
     tick_respuesta = HAL_GetTick();
     timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
     PC_Enviar("TX AUTOMATICO -> TANQUE: INICIAR DOSIFICACION\r\n");
+}
+
+static void Maestro_Confirmar_Evento_Tanque(void)
+{
+    if ((ack_evento_tanque_pendiente == 0) || (esperando_respuesta == 1))
+    {
+        return;
+    }
+
+    HAL_Delay(5);
+
+    if (RS485_Send_Packet(ID_TANQUE, CMD_CONFIRMAR_EVENTO_TANQUE, (uint8_t)(ack_evento_tanque_secuencia >> 8),
+            (uint8_t)(ack_evento_tanque_secuencia & 0xFF)) == HAL_OK)
+    {
+        ack_evento_tanque_pendiente = 0;  //se envia la confirmacion y se elimina el flag
+    }
 }
 
 static void Maestro_Procesar_Continuacion_Cinta_Automatica(void)
@@ -1039,7 +953,7 @@ static void Maestro_Procesar_Continuacion_Cinta_Automatica(void)
         return;
     }
 
-    if ((ack_evento_tanque_pendiente != 0U) || (esperando_respuesta != 0))
+    if ((ack_evento_tanque_pendiente != 0) || (esperando_respuesta != 0))
     {
         return;
     }
@@ -1051,7 +965,7 @@ static void Maestro_Procesar_Continuacion_Cinta_Automatica(void)
 
     if (estado != HAL_OK)
     {
-        continuar_cinta_automatico_pendiente = 0U;
+        continuar_cinta_automatico_pendiente = 0;
         PC_Enviar("ERROR: NO SE PUDO CONTINUAR AUTOMATICAMENTE "
             "LA CINTA. USE :CD1\r\n");
         return;
@@ -1063,10 +977,27 @@ static void Maestro_Procesar_Continuacion_Cinta_Automatica(void)
     nodo_esperado = ID_CINTA;
     comando_pendiente = CMD_CINTA_CONTINUAR_PESAJE;
     valor_pendiente = 1;
+
     tick_respuesta = HAL_GetTick();
     timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
     PC_Enviar("TX AUTOMATICO -> CINTA: CONTINUAR PESAJE\r\n");
+}
+
+static void Maestro_Confirmar_Evento_Peso_Cinta(void)
+{
+    if ((ack_evento_peso_cinta_pendiente == 0) || (esperando_respuesta != 0))
+    {
+        return;
+    }
+
+    HAL_Delay(5);
+
+    if (RS485_Send_Packet(ID_CINTA, CMD_CONFIRMAR_EVENTO_CINTA_PESAJE, (uint8_t)(ack_evento_peso_cinta_valor >> 8),
+            (uint8_t)(ack_evento_peso_cinta_valor & 0xFF)) == HAL_OK)
+    {
+        ack_evento_peso_cinta_pendiente = 0;
+    }
 }
 
 static void Maestro_Procesar_Polling(void)
@@ -1074,47 +1005,79 @@ static void Maestro_Procesar_Polling(void)
     uint32_t ahora;
     uint8_t destino;
     uint8_t comando;
+    uint8_t consulta_supervision = 0;
+
+    if (estado_maestro == M_ALARMA)
+    {
+        return;
+    }
 
     if (esperando_respuesta != 0)
     {
         return;
     }
 
-    //las confirmaciones y acciones automaticas tienen prioridad
-    if ((ack_evento_cinta_pendiente != 0) ||
-        (ack_evento_peso_cinta_pendiente != 0) ||
-        (ack_evento_tanque_pendiente != 0) ||
-        (inicio_dosif_automatico_pendiente != 0) ||
-        (continuar_cinta_automatico_pendiente != 0))
-    {
-        return;
-    }
-
-    if (pc_comando_listo != 0) //si hubiera un comando por la PC po UART, tiene prioridad
+    if (pc_comando_listo != 0)
     {
         return;
     }
 
     ahora = HAL_GetTick();
 
-    if ((ahora - tick_polling) < POLLING_PERIODO_MS)
+    //primero → supervisión de estado y alarmas general
+    if ((ahora - tick_supervision) >= SUPERVISION_PERIODO_MS)
     {
-        return;
+        tick_supervision = ahora;
+        consulta_supervision = 1;
+
+        if (nodo_supervision_siguiente == ID_TANQUE)
+        {
+            destino = ID_TANQUE;
+            comando = CMD_PEDIR_ESTADO_TANQUE;
+        }
+        else
+        {
+            destino = ID_CINTA;
+            comando = CMD_PEDIR_ESTADO_CINTA;
+        }
     }
 
-    tick_polling = ahora;
-
-    if (nodo_polling_siguiente == ID_CINTA)
-    {
-        destino = ID_CINTA;
-        comando = CMD_PEDIR_EVENTO_CINTA;
-    }
+    //polling de eventos automáticos
     else
     {
-        destino = ID_TANQUE;
-        comando = CMD_PEDIR_EVENTO_TANQUE;
+        //se realizan solo con el sistema en activo
+        if (estado_maestro != M_ACTIVO)
+        {
+            return;
+        }
+
+        // las acciones del proceso automático tienen prioridad
+        if ((ack_evento_cinta_pendiente != 0) || (ack_evento_peso_cinta_pendiente != 0) || (ack_evento_tanque_pendiente != 0) ||
+            (inicio_dosif_automatico_pendiente != 0) || (continuar_cinta_automatico_pendiente != 0))
+        {
+            return;
+        }
+
+        if ((ahora - tick_polling) < POLLING_PERIODO_MS) //si todavia no paso el tiempo suficiente, salir
+        {
+            return;
+        }
+
+        tick_polling = ahora;
+
+        if (nodo_polling_siguiente == ID_CINTA)
+        {
+            destino = ID_CINTA;
+            comando = CMD_PEDIR_EVENTO_CINTA;
+        }
+        else
+        {
+            destino = ID_TANQUE;
+            comando = CMD_PEDIR_EVENTO_TANQUE;
+        }
     }
 
+    //envio comun de la trama
     if (RS485_Send_Packet(destino, comando, 0, 0) != HAL_OK)
     {
         return;
@@ -1124,21 +1087,36 @@ static void Maestro_Procesar_Polling(void)
     nodo_esperado = destino;
     comando_pendiente = comando;
     valor_pendiente = 0;
+
     tick_respuesta = HAL_GetTick();
     timeout_respuesta_ms = POLLING_TIMEOUT_MS;
 
-
-    if (nodo_polling_siguiente == ID_CINTA)
+    //cambiamos de nodo
+    if (consulta_supervision == 1) //si se realizo la consulta de supervisión
     {
-        nodo_polling_siguiente = ID_TANQUE;
+        if (nodo_supervision_siguiente == ID_TANQUE)
+        {
+            nodo_supervision_siguiente = ID_CINTA;
+        }
+        else
+        {
+            nodo_supervision_siguiente = ID_TANQUE;
+        }
     }
     else
     {
-        nodo_polling_siguiente = ID_CINTA;
+        if (nodo_polling_siguiente == ID_CINTA)
+        {
+            nodo_polling_siguiente = ID_TANQUE;
+        }
+        else
+        {
+            nodo_polling_siguiente = ID_CINTA;
+        }
     }
 }
 
-static void Maestro_Procesar_RS485(void)
+static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
 {
     uint8_t origen;
     uint8_t comando;
@@ -1151,42 +1129,43 @@ static void Maestro_Procesar_RS485(void)
         return;
     }
 
+    //si hay algun paquete, ese flag se levanta en rs485.c
     origen = rs485_rx_origen;
     comando = rs485_rx_cmd;
     param_h = rs485_rx_param_h;
     param_l = rs485_rx_param_l;
 
-    rs485_paquete_listo = 0;
+    rs485_paquete_listo = 0;  //libera para recibir mas paquetes
 
     if (esperando_respuesta == 0)
     {
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RX NO SOLICITADO: ORIGEN=%u CMD=0x%02X\r\n", (unsigned int)origen, (unsigned int)comando);
-        PC_Enviar(mensaje_pc);
+        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RX NO SOLICITADO: ORIGEN=%u CMD=0x%02X\r\n", origen, comando);
+        PC_Enviar(mensaje_pc);  //se usa snprint f para truncar el texto si se supera el tamaño limite
         return;
     }
 
-    if (origen != nodo_esperado)
+    if (origen != nodo_esperado)  //por ej, esperaba del tanque pero manda uno la cinta
     {
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RTA INESPERADA: ORIGEN=%u CMD=0x%02X\r\n", (unsigned int)origen, (unsigned int)comando);
+        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RTA INESPERADA: ORIGEN=%u CMD=0x%02X\r\n", origen, comando);
         PC_Enviar(mensaje_pc);
         return;
     }
 
-    if ((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_EVENTO_CINTA) && (comando == CMD_EVENTO_CINTA_ESPERANDO_MAESTRO))
+    if ((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_EVENTO_CINTA) && (comando == CMD_EVENTO_CINTA_ESPERANDO_MAESTRO)) //hay una botella en la celda
     {
         uint16_t secuencia_evento;
 
         respuesta_aceptada = 1;
 
-        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
+        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8) | param_l);
 
-        ack_evento_cinta_pendiente = 1;
-        ack_evento_cinta_secuencia = secuencia_evento;
+        ack_evento_cinta_pendiente = 1;  //tengo que mandarle a la cinta un ACK conirmando que lo recibi, en la funcion Maestro_Confirmar_Evento_Cinta();
+        ack_evento_cinta_secuencia = secuencia_evento;  //hay que procesar este evento
 
-        if ((ultima_secuencia_evento_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta))
+        if ((ultima_secuencia_evento_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta)) //evita procesar 2 veces el mismo evento
         {
-            ultima_secuencia_evento_valida = 1;
-            ultima_secuencia_evento_cinta = secuencia_evento;
+            ultima_secuencia_evento_valida = 1;   //hay un evento valido
+            ultima_secuencia_evento_cinta = secuencia_evento;  //para detectar eventos repetidos
 
             peso_evento_ciclo_actual_mostrado = 0;
 
@@ -1212,7 +1191,7 @@ static void Maestro_Procesar_RS485(void)
         uint16_t peso_decigramos;
 
         respuesta_aceptada = 1;
-        peso_decigramos = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
+        peso_decigramos = (uint16_t)(((uint16_t)param_h << 8) | param_l);
 
         ack_evento_peso_cinta_pendiente = 1;
         ack_evento_peso_cinta_valor = peso_decigramos;
@@ -1222,7 +1201,7 @@ static void Maestro_Procesar_RS485(void)
             peso_evento_ciclo_actual_mostrado = 1;
 
             (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "\r\n*** PESAJE COMPLETADO: %u,%u g ***\r\n",
-                (unsigned int)(peso_decigramos / 10U), (unsigned int)(peso_decigramos % 10U));
+                (unsigned int)(peso_decigramos / 10), (unsigned int)(peso_decigramos % 10));
             PC_Enviar(mensaje_pc);
         }
     }
@@ -1232,19 +1211,19 @@ static void Maestro_Procesar_RS485(void)
         uint16_t secuencia_evento;
 
         respuesta_aceptada = 1;
-        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
+        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8) | param_l);
 
-        ack_evento_tanque_pendiente = 1;
+        ack_evento_tanque_pendiente = 1;  //para confirmar en la funcin Maestro_Confirmar_Evento_Tanque()
         ack_evento_tanque_secuencia = secuencia_evento;
 
         if ((ultima_secuencia_evento_tanque_valida == 0) || (secuencia_evento != ultima_secuencia_evento_tanque))
         {
-            ultima_secuencia_evento_tanque_valida = 1;
+            ultima_secuencia_evento_tanque_valida = 1;  //para no repetir eventos
             ultima_secuencia_evento_tanque = secuencia_evento;
 
             if (estado_maestro == M_ACTIVO)
             {
-                continuar_cinta_automatico_pendiente = 1U;
+                continuar_cinta_automatico_pendiente = 1;
 
                 PC_Enviar(
                     "\r\n*** AVISO TANQUE: LLENADO COMPLETADO ***\r\n");
@@ -1272,10 +1251,10 @@ static void Maestro_Procesar_RS485(void)
     {
         respuesta_aceptada = 1;
 
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", (unsigned int)param_l, Maestro_Nombre_Alarma_Tanque(param_h));
+        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", param_l, Maestro_Nombre_Alarma_Tanque(param_h));
         PC_Enviar(mensaje_pc);
 
-        if (param_h != 0)
+        if (param_h != 0)  //si la alarma distinto de 0, se arranca la detención del sistema.
         {
             Maestro_Entrar_Alarma(Maestro_Nombre_Alarma_Tanque(param_h));
         }
@@ -1301,8 +1280,9 @@ static void Maestro_Procesar_RS485(void)
             Maestro_Entrar_Alarma("ERROR CINTA");
         }
     }
-    //procear el ack o NACK
-    else if (((origen == ID_TANQUE) || (origen == ID_CINTA)) && ((comando == CMD_RESP_ACK) || (comando == CMD_RESP_NACK)) && (param_h == comando_pendiente))
+
+    //procesar el ack o NACK
+    else if (((origen == ID_TANQUE) || (origen == ID_CINTA)) && ((comando == CMD_RESP_ACK) || (comando == CMD_RESP_NACK)) && (param_h == comando_pendiente)) //PARAM_H → comando al que se esta respondiendo
     {
         respuesta_aceptada = 1;
 
@@ -1311,12 +1291,12 @@ static void Maestro_Procesar_RS485(void)
             switch (param_h)
             {
                 case CMD_TANQUE_SETPOINT:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: SETPOINT=%u cm\r\n", (unsigned int)valor_pendiente);
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: SETPOINT=%u cm\r\n", (unsigned int)valor_pendiente);
                     break;
 
                 case CMD_TANQUE_RECETA:
 
-                    if (ciclo_esperando_receta != 0)
+                    if (ciclo_esperando_receta != 0) //por si en la secuencia automática nos olvidamos de mandar la receta previamente
                     {
                         inicio_dosif_automatico_pendiente = 1;
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: RECETA=%u ml\r\n"
@@ -1337,7 +1317,7 @@ static void Maestro_Procesar_RS485(void)
                     {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: DOSIFICACION ABORTADA\r\n");
                     }
-                    else if (param_l == ACK_ESPERANDO_BOTELLA)
+                    else if (param_l == ACK_ESPERANDO_BOTELLA)  //si no hay botella presente
                     {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: ESPERANDO BOTELLA\r\n");
                     }
@@ -1364,15 +1344,15 @@ static void Maestro_Procesar_RS485(void)
                     break;
 
                 case CMD_CINTA_ACTIVAR:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), (valor_pendiente != 0U) ? "ACK <- CINTA: ACTIVADA\r\n" : "ACK <- CINTA: DESACTIVADA\r\n");
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), (valor_pendiente == 1) ? "ACK <- CINTA: ACTIVADA\r\n" : "ACK <- CINTA: DESACTIVADA\r\n");
                     break;
 
                 case CMD_CINTA_CONTROL_BANDA:
-                    if (valor_pendiente == 0U)
+                    if (valor_pendiente == 0)
                     {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA DETENIENDOSE\r\n");
                     }
-                    else if (valor_pendiente == 1U)
+                    else if (valor_pendiente == 1)
                     {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA ARRANCANDO\r\n");
                     }
@@ -1387,30 +1367,33 @@ static void Maestro_Procesar_RS485(void)
                     break;
 
                 default:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- NODO %u: CMD=0x%02X CODIGO=%u\r\n",
-                        (unsigned int)origen, (unsigned int)param_h, (unsigned int)param_l);
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- NODO %u: CMD=0x%02X CODIGO=%u\r\n", origen, param_h, param_l);  // %u = numeros
                     break;
             }
         }
+
         else
         {
             if ((origen == ID_TANQUE) && (param_h == CMD_TANQUE_CONTROL_DOSIF) && (param_l == NACK_SIN_RECETA) &&
                 (inicio_dosif_automatico_pendiente != 0))  //fue por no tener receta?
+            	//caso especial para salvar el ciclo automatico
             {
                 inicio_dosif_automatico_pendiente = 0;
                 ciclo_esperando_receta = 1;
 
-                (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "\r\nERROR: HAY UNA BOTELLA ESPERANDO. "
-                    "CONFIGURE LA RECETA CON :TRxxx\r\n");
+                (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "\r\nERROR: HAY UNA BOTELLA ESPERANDO. " "CONFIGURE LA RECETA CON :TRxxx\r\n");
             }
             else
             {
+            	//fallo el inicio AUTOM del dosificador por cualquier otro motivo?
+
                 if ((origen == ID_TANQUE) && (param_h == CMD_TANQUE_CONTROL_DOSIF) && (inicio_dosif_automatico_pendiente != 0))
                 {
-                    inicio_dosif_automatico_pendiente = 0;
+                    inicio_dosif_automatico_pendiente = 0; //cancelamos los flags de la secuencia
                     ciclo_esperando_receta = 0;
                 }
 
+                //mostramos NACK normal para todos los NACKs usando funciones auxiliares para armar el msj
                 (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "NACK <- %s: %s,ERROR=%s\r\n", (origen == ID_TANQUE) ? "TANQUE" : "CINTA",
                     Maestro_Nombre_Comando(param_h), Maestro_Descripcion_Error(param_l));
             }
@@ -1420,12 +1403,11 @@ static void Maestro_Procesar_RS485(void)
     }
     else
     {
-        (void)snprintf(mensaje_pc,sizeof(mensaje_pc), "RX NO ESPERADO: ORIGEN=%u CMD=0x%02X H=0x%02X L=0x%02X\r\n",
-            (unsigned int)origen, (unsigned int)comando, (unsigned int)param_h, (unsigned int)param_l);
+        (void)snprintf(mensaje_pc,sizeof(mensaje_pc), "COMANDO NO ESPERADO: ORIGEN=%u CMD=0x%02X H=0x%02X L=0x%02X\r\n", origen, comando, param_h, param_l);
         PC_Enviar(mensaje_pc);
     }
 
-    if (respuesta_aceptada != 0)
+    if (respuesta_aceptada != 0) //se acepto la respuesta? → borramos las memorias para volver a arrancar
     {
         esperando_respuesta = 0;
         nodo_esperado = 0;
@@ -1631,14 +1613,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     {
         char dato = (char)pc_rx_byte;
 
-        if (dato == ':')
+        if (dato == ':') //si llega ':'
         {
             pc_cmd_indice = 0;
             pc_recibiendo = 1;
             pc_comando_listo = 0;
-            pc_cmd_buffer[0] = '\0';
+            pc_cmd_buffer[0] = '\0';  //no guardamos los ':'
         }
-        else if (pc_recibiendo != 0)
+        else if (pc_recibiendo == 1)
         {
             if ((dato == '\r') || (dato == '\n'))
             {
@@ -1646,7 +1628,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 pc_recibiendo = 0;
                 pc_comando_listo = 1;
             }
-            else if (pc_cmd_indice < (PC_CMD_BUFFER_SIZE - 1))
+            else if (pc_cmd_indice < (PC_CMD_BUFFER_SIZE - 1)) //dejamos un lugar para guardar el '\0'
             {
                 pc_cmd_buffer[pc_cmd_indice++] = dato;
             }
@@ -1658,7 +1640,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             }
         }
 
-        (void)HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1U);
+        (void)HAL_UART_Receive_IT(&huart1, &pc_rx_byte, 1);  //volvemos a activar para prcesar el siguiente caracter
     }
     else if (huart->Instance == USART3)
     {
