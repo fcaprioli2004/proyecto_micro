@@ -489,10 +489,9 @@ static void procesar_rs485_tanque(void)
 
         case CMD_CONFIRMAR_EVENTO_TANQUE:
         {
-            uint16_t secuencia_confirmada = (uint16_t)(((uint16_t)param_h << 8) | param_l);
+            uint16_t secuencia_confirmada = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
 
-            //¿La secuencia confirmada POR EL MAESTRO es la correcta (la misma que tenemos localmente)?
-            if ((evento_llenado_pendiente != 0) && (secuencia_confirmada == evento_llenado_secuencia))
+            if ((evento_llenado_pendiente != 0) && (secuencia_confirmada == evento_llenado_secuencia)) //¿La secuencia confirmada es la correcta?
             {
                 evento_llenado_pendiente = 0; //borra el flag
             }
@@ -690,13 +689,11 @@ static void maquina_estados_dosificador(void)
         {
             uint32_t pulsos_umbral_lento;
 
-            if (hay_botella == 0) //si se retira la botella durante el llenado, pasamos a esperando botella y cuandoo se detecte terminará AUTMATICO
+            if (hay_botella == 0)
             {
-            	detener_bomba_dosificador();
-				estado_dosi = DOSIF_ESPERANDO_BOTELLA;
-
-				uart_enviar_texto("AVISO: BOTELLA_RETIRADA, LLENADO PAUSADO\r\n");
-				break;
+                abortar_dosificacion();
+                uart_enviar_texto("ERROR: BOTELLA_RETIRADA\r\n");
+                break;
             }
 
             if (pulsos_objetivo == 0) //hay receta?
@@ -706,7 +703,7 @@ static void maquina_estados_dosificador(void)
                 break;
             }
 
-            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100;
+            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100U;
 
             if (pulsos_caudal >= pulsos_objetivo) //ya llego a los pulsos objetivo?
             {
@@ -1000,7 +997,7 @@ static uint16_t HCSR04_Get_Distance_Filtered(void) //filtro para suavizar los ca
     }
 
     muestras[posicion] = distancia;
-    posicion = (uint8_t)((posicion + 1) % 7); //con %7 hace que vuelva a 0 despues de 4  → BUFFER CIRCULAR
+    posicion = (uint8_t)((posicion + 1) % 5); //con %5 hace que vuelva a 0 despues de 4  → BUFFER CIRCULAR
 
     if (cantidad < 7) //al encender todavia no hay 5 mediciones
     {

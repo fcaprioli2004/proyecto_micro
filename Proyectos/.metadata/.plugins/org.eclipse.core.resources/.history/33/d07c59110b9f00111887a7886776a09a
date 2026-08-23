@@ -706,7 +706,7 @@ static void maquina_estados_dosificador(void)
                 break;
             }
 
-            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100;
+            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100U;
 
             if (pulsos_caudal >= pulsos_objetivo) //ya llego a los pulsos objetivo?
             {

@@ -491,8 +491,7 @@ static void procesar_rs485_tanque(void)
         {
             uint16_t secuencia_confirmada = (uint16_t)(((uint16_t)param_h << 8) | param_l);
 
-            //¿La secuencia confirmada POR EL MAESTRO es la correcta (la misma que tenemos localmente)?
-            if ((evento_llenado_pendiente != 0) && (secuencia_confirmada == evento_llenado_secuencia))
+            if ((evento_llenado_pendiente != 0) && (secuencia_confirmada == evento_llenado_secuencia)) //¿La secuencia confirmada es la correcta?
             {
                 evento_llenado_pendiente = 0; //borra el flag
             }
@@ -706,7 +705,7 @@ static void maquina_estados_dosificador(void)
                 break;
             }
 
-            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100;
+            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100U;
 
             if (pulsos_caudal >= pulsos_objetivo) //ya llego a los pulsos objetivo?
             {
