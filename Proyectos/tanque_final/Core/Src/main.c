@@ -51,36 +51,35 @@ typedef enum
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BUFFER_SIZE                    64U
+#define BUFFER_SIZE                    64
 
+#define ALTURA_TANQUE_CM               28
+#define SETPOINT_MAX_CM                24
+#define NIVEL_REBOSE_CRITICO_CM        25
 
-#define ALTURA_TANQUE_CM               28U
-#define SETPOINT_MAX_CM                24U
-#define NIVEL_REBOSE_CRITICO_CM        25U
-
-/* El HC-SR04 no debe dispararse continuamente. */
-#define CONTROL_TANQUE_PERIODO_MS      70U
-#define LECTURAS_INVALIDAS_MAX         15U
-#define TIEMPO_MARCHA_SECO_MS          15000U
+//variables para controlar el HC-SR04
+#define CONTROL_TANQUE_PERIODO_MS      70
+#define LECTURAS_INVALIDAS_MAX         15
+#define TIEMPO_MARCHA_SECO_MS          15000
 
 #define BANDA_PROPORCIONAL_CM          8
-#define PWM_TANQUE_MIN                 65U
-#define PWM_TANQUE_MAX                 99U
+#define PWM_TANQUE_MIN                 65
+#define PWM_TANQUE_MAX                 99
 
-#define PWM_DOSI_RAPIDO                98U
-#define PWM_DOSI_LENTO                 75U
-#define PORCENTAJE_CAMBIO_LENTO        80U
+#define PWM_DOSI_RAPIDO                98
+#define PWM_DOSI_LENTO                 75
+#define PORCENTAJE_CAMBIO_LENTO        80
 
 /* 6,44 pulsos/ml expresado sin punto flotante. Debe calibrarse. */
-#define PULSOS_X100_POR_ML             644U
-#define VOLUMEN_RECETA_MAX_ML          10000U
+#define PULSOS_X100_POR_ML             644
+#define VOLUMEN_RECETA_MAX_ML          10000
 
-#define ALARMA_SIN_ERROR               0U
-#define ALARMA_MARCHA_SECO             1U
-#define ALARMA_REBOSE                  2U
-#define ALARMA_SENSOR_NIVEL            3U
+#define ALARMA_SIN_ERROR               0
+#define ALARMA_MARCHA_SECO             1
+#define ALARMA_REBOSE                  2
+#define ALARMA_SENSOR_NIVEL            3
 
-#define RS485_RESPUESTA_DELAY_MS       5U
+#define RS485_RESPUESTA_DELAY_MS       5
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -94,35 +93,37 @@ typedef enum
 static volatile EstadoTanque estado_tanque = TANQUE_AUTONOMO;
 static volatile EstadoDosificador estado_dosi = DOSIF_ESPERANDO_INICIO;
 
-static uint16_t distancia_tanque_cm = 0U;
-static volatile uint8_t nivel_tanque_filtrado = 0U;
-static volatile uint8_t setpoint_nivel = 15U;
+static uint16_t distancia_tanque_cm = 0;
+static volatile uint8_t nivel_tanque_filtrado = 0;
+static volatile uint8_t setpoint_nivel = 15;
 static volatile uint8_t alarma_codigo = ALARMA_SIN_ERROR;
-static uint8_t lecturas_invalidas = 0U;
+static uint8_t lecturas_invalidas = 0;
 
-static uint8_t bomba_tanque_encendida = 0U;
-static uint32_t tick_control_tanque = 0U;
-static uint32_t tick_uart = 0U;
+static uint8_t bomba_tanque_encendida = 0;
+static uint32_t tick_control_tanque = 0;
+
+static uint32_t tick_uart = 0;
 static char mensaje_uart[128];
-static uint32_t tick_inicio_bomba = 0U;
-static uint8_t nivel_inicial_bomba = 0U;
-static uint8_t chequeo_seco_activo = 0U;
 
-static volatile uint16_t volumen_receta_ml = 0U;
-static volatile uint8_t receta_lista = 0U;
-static volatile uint32_t pulsos_objetivo = 0U;
-static volatile uint32_t pulsos_caudal = 0U;
+static uint32_t tick_inicio_bomba = 0;
+static uint8_t nivel_inicial_bomba = 0;
+static uint8_t chequeo_seco_activo = 0;
 
-static uint8_t rx_byte = 0U;
-static volatile uint8_t recibiendo = 0U;
-static volatile uint8_t comando_listo = 0U;
-static volatile uint8_t comando_desbordado = 0U;
-static volatile uint8_t indice = 0U;
+static volatile uint16_t volumen_receta_ml = 0;
+static volatile uint8_t receta_lista = 0;
+static volatile uint32_t pulsos_objetivo = 0;
+static volatile uint32_t pulsos_caudal = 0;
+
+static uint8_t rx_byte = 0;
+static volatile uint8_t recibiendo = 0;
+static volatile uint8_t comando_listo = 0;
+static volatile uint8_t comando_desbordado = 0;
+static volatile uint8_t indice = 0;
 static char buffer_rx[BUFFER_SIZE];
 
-/* Evento espontáneo de llenado completo. */
-static uint8_t evento_llenado_pendiente = 0U;
-static uint16_t evento_llenado_secuencia = 0U;
+//llenado automatico completo
+static uint8_t evento_llenado_pendiente = 0;
+static uint16_t evento_llenado_secuencia = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -235,6 +236,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
     procesar_rs485_tanque();
 
     if (comando_listo != 0)
@@ -246,33 +248,24 @@ int main(void)
 
     maquina_estados_dosificador();
 
+    //control del tanque cada 70ms
     if ((HAL_GetTick() - tick_control_tanque) >= CONTROL_TANQUE_PERIODO_MS)
     {
       tick_control_tanque = HAL_GetTick();
       maquina_estados_tanque();
     }
 
+    //cada 1 segundo imprime mensaje de estado por la UART local
     if ((HAL_GetTick() - tick_uart) >= 1000)
     {
       int longitud;
       uint32_t pulsos_actuales = pulsos_caudal;
 
       tick_uart = HAL_GetTick();
-      longitud = snprintf(mensaje_uart, sizeof(mensaje_uart),
-                          "STAT: NIVEL=%u,SP=%u,BOTELLA=%u,RECETA=%u,PULSOS=%lu/%lu,ALARMA=%u\r\n",
-                          (unsigned int)nivel_tanque_filtrado,
-                          (unsigned int)setpoint_nivel,
-                          (unsigned int)Hay_Botella(),
-                          (unsigned int)volumen_receta_ml,
-                          (unsigned long)pulsos_actuales,
-                          (unsigned long)pulsos_objetivo,
-                          (unsigned int)alarma_codigo);
+      longitud = snprintf(mensaje_uart, sizeof(mensaje_uart), "STAT: NIVEL=%u,SP=%u,BOTELLA=%u,RECETA=%u,PULSOS=%lu/%lu,ALARMA=%u\r\n",
+    		  nivel_tanque_filtrado, setpoint_nivel, Hay_Botella(), volumen_receta_ml, pulsos_actuales, pulsos_objetivo, alarma_codigo);
 
-      if (longitud > 0)
-      {
-        uint16_t cantidad = (longitud < (int)sizeof(mensaje_uart)) ? (uint16_t)longitud : (uint16_t)(sizeof(mensaje_uart) - 1);
-        HAL_UART_Transmit(&huart1, (uint8_t *)mensaje_uart, cantidad, 100);
-      }
+      HAL_UART_Transmit(&huart1, (uint8_t *)mensaje_uart, (uint16_t)longitud, 100);
     }
   }
   /* USER CODE END 3 */
@@ -763,18 +756,19 @@ static void maquina_estados_tanque(void)
 {
     uint16_t distancia = HCSR04_Get_Distance_Filtered();
 
-    if ((distancia < 2U) || (distancia > ALTURA_TANQUE_CM)) //¿el nivel se sale de los limites?
+    if ((distancia < 2) || (distancia > ALTURA_TANQUE_CM)) //¿el nivel se sale de los limites?
     {
-        detener_bomba_tanque(); //frenamos el llenado por seguridad
+        detener_bomba_tanque(); //frenamos el llenado por seguridad, ante al menos una sola lectura invalida
 
-        if (lecturas_invalidas < UINT8_MAX)
+        if (lecturas_invalidas < UINT8_MAX) //evitamos que se desborde la variable para que no vuelva a iniciarse en 0
         {
             lecturas_invalidas++;
         }
 
-        if ((lecturas_invalidas >= LECTURAS_INVALIDAS_MAX) && (estado_tanque != TANQUE_ALARMA)) //despues de 5 mediciones malas salta la alama
+        //despues de 15 mediciones malas consecutivas salta la alarma
+        if ((lecturas_invalidas >= LECTURAS_INVALIDAS_MAX) && (estado_tanque != TANQUE_ALARMA))
         {
-            disparar_alarma(ALARMA_SENSOR_NIVEL);
+            disparar_alarma(ALARMA_SENSOR_NIVEL);  //significa que realmente el sensor no esta funcionando
         }
 
         return;
@@ -799,7 +793,7 @@ static void maquina_estados_tanque(void)
                 tick_inicio_bomba = HAL_GetTick();
                 nivel_inicial_bomba = nivel_tanque_filtrado;
             }
-            else if ((HAL_GetTick() - tick_inicio_bomba) >= TIEMPO_MARCHA_SECO_MS)
+            else if ((HAL_GetTick() - tick_inicio_bomba) >= TIEMPO_MARCHA_SECO_MS)  //si ha estado funcioonando 15seg, verificamos que haya subido el nivel
             {
                 if (nivel_tanque_filtrado <= nivel_inicial_bomba) //si el nivel no ha aumentado, enccendemos la alarma
                 {
@@ -818,16 +812,17 @@ static void maquina_estados_tanque(void)
         }
     }
 
+    //despues de todas las comprobaciones tenemos el control del nivel
     switch (estado_tanque)
     {
         case TANQUE_AUTONOMO:
         {
             int16_t error = (int16_t)setpoint_nivel - (int16_t)nivel_tanque_filtrado;
 
-            if (error > 0)
+            if (error >= 3)
             {
                 uint8_t pwm;
-                bomba_tanque_encendida = 1; //para el control de alarmas tambien
+                bomba_tanque_encendida = 1; //flag para el control de alarmas tambien
 
                 if (error >= BANDA_PROPORCIONAL_CM)
                 {
@@ -843,7 +838,7 @@ static void maquina_estados_tanque(void)
                 __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwm);
 
             }
-            else //nivel igual o superior al setpoint
+            else if (error <= 0)
             {
                 detener_bomba_tanque();
             }
@@ -995,21 +990,22 @@ static void interpretar_comando(void) //interprete de comandos por UART local
 
 static uint16_t HCSR04_Get_Distance_Filtered(void) //filtro para suavizar los cambios repentinos
 {
-    static uint16_t muestras[5] = {0};
+    static uint16_t muestras[7] = {0};
     static uint8_t cantidad = 0;
     static uint8_t posicion = 0;
-    uint16_t distancia = HCSR04_Get_Distance();
     uint32_t suma = 0;
 
-    if ((distancia < 2U) || (distancia > 30U)) //si esta fuera del rango no la filtra
+    uint16_t distancia = HCSR04_Get_Distance();     //esta es la distancia del sensor a la superficie
+
+    if ((distancia < 1) || (distancia > 30)) //rechazamos mediciones claramente inválidas
     {
         return 0;
     }
 
     muestras[posicion] = distancia;
-    posicion = (uint8_t)((posicion + 1) % 5); //con %5 hace que vuelva a 0 despues de 4
+    posicion = (uint8_t)((posicion + 1) % 5); //con %5 hace que vuelva a 0 despues de 4  → BUFFER CIRCULAR
 
-    if (cantidad < 5) //al encender todavia no hay 5 mediciones
+    if (cantidad < 7) //al encender todavia no hay 5 mediciones
     {
         cantidad++;
     }

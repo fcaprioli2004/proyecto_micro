@@ -1,0 +1,1114 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "hc_sr04.h"
+#include "rs485.h"
+#include "protocolo_rs485.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+typedef enum
+{
+    TANQUE_AUTONOMO = 0,
+    TANQUE_ALARMA   = 1
+} EstadoTanque;
+
+typedef enum
+{
+    DOSIF_ESPERANDO_BOTELLA = 0,
+    DOSIF_ESPERANDO_INICIO  = 1,
+    DOSIF_LLENANDO          = 2,
+    DOSIF_BOTELLA_LLENA     = 3
+} EstadoDosificador;
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+#define BUFFER_SIZE                    64
+
+#define ALTURA_TANQUE_CM               28
+#define SETPOINT_MAX_CM                24
+#define NIVEL_REBOSE_CRITICO_CM        25
+
+//variables para controlar el HC-SR04
+#define CONTROL_TANQUE_PERIODO_MS      70
+#define LECTURAS_INVALIDAS_MAX         15
+#define TIEMPO_MARCHA_SECO_MS          15000
+
+#define BANDA_PROPORCIONAL_CM          8
+#define PWM_TANQUE_MIN                 65
+#define PWM_TANQUE_MAX                 99
+
+#define PWM_DOSI_RAPIDO                98
+#define PWM_DOSI_LENTO                 75
+#define PORCENTAJE_CAMBIO_LENTO        80
+
+/* 6,44 pulsos/ml expresado sin punto flotante. Debe calibrarse. */
+#define PULSOS_X100_POR_ML             644
+#define VOLUMEN_RECETA_MAX_ML          10000
+
+#define ALARMA_SIN_ERROR               0
+#define ALARMA_MARCHA_SECO             1
+#define ALARMA_REBOSE                  2
+#define ALARMA_SENSOR_NIVEL            3
+
+#define RS485_RESPUESTA_DELAY_MS       5
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+static volatile EstadoTanque estado_tanque = TANQUE_AUTONOMO;
+static volatile EstadoDosificador estado_dosi = DOSIF_ESPERANDO_INICIO;
+
+static uint16_t distancia_tanque_cm = 0;
+static volatile uint8_t nivel_tanque_filtrado = 0;
+static volatile uint8_t setpoint_nivel = 15;
+static volatile uint8_t alarma_codigo = ALARMA_SIN_ERROR;
+static uint8_t lecturas_invalidas = 0;
+
+static uint8_t bomba_tanque_encendida = 0;
+static uint32_t tick_control_tanque = 0;
+
+static uint32_t tick_uart = 0;
+static char mensaje_uart[128];
+
+static uint32_t tick_inicio_bomba = 0;
+static uint8_t nivel_inicial_bomba = 0;
+static uint8_t chequeo_seco_activo = 0;
+
+static volatile uint16_t volumen_receta_ml = 0;
+static volatile uint8_t receta_lista = 0;
+static volatile uint32_t pulsos_objetivo = 0;
+static volatile uint32_t pulsos_caudal = 0;
+
+static uint8_t rx_byte = 0;
+static volatile uint8_t recibiendo = 0;
+static volatile uint8_t comando_listo = 0;
+static volatile uint8_t comando_desbordado = 0;
+static volatile uint8_t indice = 0;
+static char buffer_rx[BUFFER_SIZE];
+
+//llenado automatico completo
+static uint8_t evento_llenado_pendiente = 0;
+static uint16_t evento_llenado_secuencia = 0;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+/* USER CODE BEGIN PFP */
+static uint16_t HCSR04_Get_Distance_Filtered(void);
+static void interpretar_comando(void);
+static uint8_t parsear_uint32(const char *texto, uint32_t *valor);
+
+static void uart_enviar_texto(const char *texto);
+static void uart_enviar_respuesta_valor(const char *formato, uint32_t valor1, uint32_t valor2);
+
+static uint8_t Hay_Botella(void);
+static void maquina_estados_tanque(void);
+static void maquina_estados_dosificador(void);
+static void iniciar_dosificacion(void);
+static void abortar_dosificacion(void);
+static void resetear_alarma_tanque(void);
+
+static void disparar_alarma(uint8_t codigo);
+static void detener_bomba_tanque(void);
+static void detener_bomba_dosificador(void);
+static void procesar_rs485_tanque(void);
+
+static HAL_StatusTypeDef tanque_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l);
+static void tanque_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado,uint8_t codigo);
+
+static void tanque_generar_evento_llenado(void);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
+  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
+
+  /* USER CODE BEGIN 2 */
+  if (HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  detener_bomba_tanque();
+  detener_bomba_dosificador();
+
+  HAL_GPIO_WritePin(LED_ALARMA_GPIO_Port, LED_ALARMA_Pin, GPIO_PIN_RESET);
+
+  HCSR04_Init();
+
+  if (HAL_UART_Receive_IT(&huart1, &rx_byte, 1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  if (RS485_Init(&huart3, RS485_DE_GPIO_Port, RS485_DE_Pin, ID_TANQUE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  uart_enviar_texto("Iniciando...\r\n");
+  uart_enviar_texto("Comandos: :S15 :R500 :I1 :I0 :A1 (terminar con CR/LF)\r\n");
+
+  tick_control_tanque = HAL_GetTick();
+  tick_uart = HAL_GetTick();
+
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+
+    procesar_rs485_tanque();
+
+    if (comando_listo != 0)
+    {
+      interpretar_comando();
+      comando_desbordado = 0;
+      comando_listo = 0;
+    }
+
+    maquina_estados_dosificador();
+
+    //control del tanque cada 70ms
+    if ((HAL_GetTick() - tick_control_tanque) >= CONTROL_TANQUE_PERIODO_MS)
+    {
+      tick_control_tanque = HAL_GetTick();
+      maquina_estados_tanque();
+    }
+
+    //cada 1 segundo imprime mensaje de estado por la UART local
+    if ((HAL_GetTick() - tick_uart) >= 1000)
+    {
+      int longitud;
+      uint32_t pulsos_actuales = pulsos_caudal;
+
+      tick_uart = HAL_GetTick();
+      longitud = snprintf(mensaje_uart, sizeof(mensaje_uart), "STAT: NIVEL=%u,SP=%u,BOTELLA=%u,RECETA=%u,PULSOS=%lu/%lu,ALARMA=%u\r\n",
+    		  nivel_tanque_filtrado, setpoint_nivel, Hay_Botella(), volumen_receta_ml, pulsos_actuales, pulsos_objetivo, alarma_codigo);
+
+      HAL_UART_Transmit(&huart1, (uint8_t *)mensaje_uart, (uint16_t)longitud, 100);
+    }
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* USER CODE BEGIN 4 */
+
+static HAL_StatusTypeDef tanque_enviar_rs485(uint8_t origen, uint8_t comando, uint8_t param_h, uint8_t param_l)
+{
+    HAL_Delay(RS485_RESPUESTA_DELAY_MS);
+
+    return RS485_Send_Packet(origen, comando, param_h, param_l);
+}
+
+//para mandar el ACK o NACK
+static void tanque_responder_resultado(uint8_t origen, uint8_t respuesta, uint8_t comando_solicitado, uint8_t codigo)
+{
+    if (tanque_enviar_rs485(origen, respuesta, comando_solicitado, codigo) != HAL_OK)
+    {
+        uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_RESULTADO\r\n");
+    }
+}
+
+//crea el evento y lo deja pediente
+static void tanque_generar_evento_llenado(void)
+{
+    evento_llenado_secuencia++;
+
+    if (evento_llenado_secuencia == 0) //por si se desbrda
+    {
+        evento_llenado_secuencia = 1;
+    }
+
+    evento_llenado_pendiente = 1;
+}
+
+static void procesar_rs485_tanque(void)
+{
+    uint8_t origen; //origen de donde vino el mensaje, no el origen del esclavo
+    uint8_t comando;
+    uint8_t param_h;
+    uint8_t param_l;
+    uint16_t valor;
+
+    if (rs485_paquete_listo == 0)
+    {
+        return;
+    }
+
+    origen = rs485_rx_origen;
+    comando = rs485_rx_cmd;
+    param_h = rs485_rx_param_h;
+    param_l = rs485_rx_param_l;
+
+    rs485_paquete_listo = 0;
+
+    if (origen != ID_MAESTRO)
+    {
+        return;
+    }
+
+    valor = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
+
+    switch (comando)
+    {
+        case CMD_PING:
+            if (tanque_enviar_rs485(origen, CMD_PONG, param_h, param_l) != HAL_OK)
+            {
+                uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_PONG\r\n"); //mensaje por la UART local para corroborar
+            }
+            break;
+
+        case CMD_PEDIR_ESTADO_TANQUE:
+            if (tanque_enviar_rs485(origen, CMD_RESP_ESTADO_TANQUE, alarma_codigo, nivel_tanque_filtrado) != HAL_OK)
+            {
+                uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_ESTADO_TANQUE\r\n");
+            }
+            break;
+
+        case CMD_PEDIR_ESTADO_DOSIF:
+            if (tanque_enviar_rs485(origen, CMD_RESP_ESTADO_DOSIF, (uint8_t)estado_dosi, Hay_Botella()) != HAL_OK)
+            {
+                uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_ESTADO_DOSIF\r\n");
+            }
+            break;
+
+        case CMD_PEDIR_EVENTO_TANQUE:
+
+            if (evento_llenado_pendiente != 0)
+            {
+                if (tanque_enviar_rs485(origen, CMD_EVENTO_TANQUE_LLENADO_COMPLETO, (uint8_t)(evento_llenado_secuencia >> 8U),
+                        (uint8_t)(evento_llenado_secuencia & 0xFFU)) != HAL_OK)
+                {
+                    uart_enviar_texto("ERR,RS485,NO_SE_PUDO_ENVIAR_EVENTO_TANQUE\r\n");
+                }
+            }
+            else
+            {
+                if (tanque_enviar_rs485(origen, CMD_RESP_SIN_EVENTO, 0, 0) != HAL_OK)
+                {
+                    uart_enviar_texto("ERR,RS485,NO_SE_PUDO_RESPONDER_SIN_EVENTO\r\n");
+                }
+            }
+            break;
+
+        case CMD_TANQUE_SETPOINT:
+            if (valor > SETPOINT_MAX_CM)
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_FUERA_DE_RANGO);
+            }
+            else
+            {
+                setpoint_nivel = (uint8_t)valor;
+                tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            }
+            break;
+
+        case CMD_TANQUE_RECETA:
+            if ((valor == 0) || (valor > VOLUMEN_RECETA_MAX_ML))
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_FUERA_DE_RANGO);
+            }
+            else if ((estado_dosi == DOSIF_LLENANDO) || (estado_dosi == DOSIF_ESPERANDO_BOTELLA))
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
+            }
+            else
+            {
+                volumen_receta_ml = valor;
+                pulsos_objetivo = (((uint32_t)valor * PULSOS_X100_POR_ML) + 50U) / 100U;
+                receta_lista = 1;
+
+                tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            }
+            break;
+
+        case CMD_TANQUE_CONTROL_DOSIF:
+            if ((param_h != 0) || (param_l > 1)) //este comando corresponde a :TI0 o :TI1 por eso esta condicion
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
+            }
+            else if (param_l == 0) //por si llega :TI0
+            {
+                abortar_dosificacion();
+                tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            }
+            else if (estado_tanque == TANQUE_ALARMA) //si esta en estado de alaema NACK
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_ALARMA_ACTIVA);
+            }
+            else if (receta_lista == 0) //si todavia no habian mandado la receta NACK
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_SIN_RECETA);
+            }
+            else if ((estado_dosi == DOSIF_LLENANDO) || (estado_dosi == DOSIF_ESPERANDO_BOTELLA)) //¿Ya hay una dosificación activa?
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
+            }
+            else if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() != 0U)) //¿Existe una botella llena todavía colocada?
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_RETIRE_BOTELLA);
+            }
+            else if (evento_llenado_pendiente != 0U) //hay un llenado anterior
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
+            }
+            else
+            {
+                /* uint32_t primask = __get_PRIMASK();
+                __disable_irq();*/
+
+                pulsos_caudal = 0;
+
+                /*if (primask == 0)
+                {
+                    __enable_irq();
+                }*/
+
+                if (Hay_Botella() != 0)
+                {
+                    estado_dosi = DOSIF_LLENANDO;
+                    tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+                }
+                else
+                {
+                    estado_dosi = DOSIF_ESPERANDO_BOTELLA;
+                    tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_ESPERANDO_BOTELLA);
+                }
+            }
+            break;
+
+        case CMD_CONFIRMAR_EVENTO_TANQUE:
+        {
+            uint16_t secuencia_confirmada = (uint16_t)(((uint16_t)param_h << 8U) | param_l);
+
+            if ((evento_llenado_pendiente != 0) && (secuencia_confirmada == evento_llenado_secuencia)) //¿La secuencia confirmada es la correcta?
+            {
+                evento_llenado_pendiente = 0; //borra el flag
+            }
+            break;
+        }
+
+        case CMD_TANQUE_RESET_ALARMA:
+            if ((param_h != 0) || (param_l != 1)) //solo acepta :TA1
+            {
+                tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
+            }
+            else
+            {
+                resetear_alarma_tanque();
+                tanque_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
+            }
+            break;
+
+        default:
+            tanque_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_COMANDO_NO_SOPORTADO);
+            break;
+    }
+}
+
+static void uart_enviar_texto(const char *texto)
+{
+    if (texto == NULL)
+    {
+        return;
+    }
+
+    HAL_UART_Transmit(&huart1, (uint8_t *)texto, (uint16_t)strlen(texto),100U);
+}
+
+static void uart_enviar_respuesta_valor(const char *formato, uint32_t valor1, uint32_t valor2)
+{
+    int longitud = snprintf(mensaje_uart, sizeof(mensaje_uart), formato, (unsigned long)valor1, (unsigned long)valor2);
+
+    if (longitud > 0)
+    {
+        uint16_t cantidad = (longitud < (int)sizeof(mensaje_uart)) ?  (uint16_t)longitud : (uint16_t)(sizeof(mensaje_uart) - 1U);
+
+        HAL_UART_Transmit(&huart1, (uint8_t *)mensaje_uart, cantidad, 100U);
+    }
+}
+
+static uint8_t parsear_uint32(const char *texto, uint32_t *valor)
+{
+    uint32_t acumulado = 0;
+
+    if ((texto == NULL) || (valor == NULL) || (*texto == '\0'))
+    {
+        return 0U;
+    }
+
+    while (*texto != '\0')
+    {
+        uint32_t digito;
+
+        if ((*texto < '0') || (*texto > '9'))
+        {
+            return 0;
+        }
+
+        digito = (uint32_t)(*texto - '0');
+
+        if (acumulado > ((UINT32_MAX - digito) / 10U))
+        {
+            return 0;
+        }
+
+        acumulado = (acumulado * 10U) + digito;
+        texto++;
+    }
+
+    *valor = acumulado;
+    return 1;
+}
+
+//funcion para simplificar la lectura del sensor IR
+static uint8_t Hay_Botella(void)
+{
+    return (HAL_GPIO_ReadPin(SENSOR_BOTELLA_GPIO_Port, SENSOR_BOTELLA_Pin) == GPIO_PIN_RESET) ? 1 : 0; //reset = botella detectada = 1 en este caso
+}
+
+static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, realizamos lo mismo en case CMD_TANQUE_CONTROL_DOSIF:
+{
+    //uint32_t primask;
+
+    if (estado_tanque == TANQUE_ALARMA)
+    {
+        uart_enviar_texto("ERROR: ALARMA_TANQUE\r\n");
+        return;
+    }
+
+    if (receta_lista == 0)
+    {
+        uart_enviar_texto("ERROR: SIN_RECETA\r\n");
+        return;
+    }
+
+    if ((estado_dosi == DOSIF_LLENANDO) || (estado_dosi == DOSIF_ESPERANDO_BOTELLA))
+    {
+        uart_enviar_texto("ERROR: DOSIFICACION_ACTIVA\r\n");
+        return;
+    }
+
+    if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() != 0))
+    {
+        uart_enviar_texto("ERROR: RETIRE_BOTELLA_ANTERIOR\r\n");
+        return;
+    }
+
+    if (evento_llenado_pendiente != 0)
+    {
+        uart_enviar_texto("ERROR: EVENTO_LLENADO_SIN_CONFIRMAR\r\n");
+        return;
+    }
+
+    /*primask = __get_PRIMASK();
+    __disable_irq();*/
+
+    pulsos_caudal = 0;
+
+    /*if (primask == 0)
+    {
+        __enable_irq();
+    }*/
+
+    if (Hay_Botella() != 0)
+    {
+        estado_dosi = DOSIF_LLENANDO;
+        uart_enviar_texto("OK: DOSIFICACION INICIADA\r\n");
+    }
+    else
+    {
+        estado_dosi = DOSIF_ESPERANDO_BOTELLA;
+        uart_enviar_texto("OK: ESPERANDO_BOTELLA\r\n");
+    }
+}
+
+static void abortar_dosificacion(void)
+{
+    //uint32_t primask = __get_PRIMASK();
+
+    detener_bomba_dosificador();
+    estado_dosi = DOSIF_ESPERANDO_INICIO;
+    evento_llenado_pendiente = 0;
+
+    //__disable_irq();
+
+    pulsos_caudal = 0;
+
+    /*if (primask == 0U)
+    {
+        __enable_irq();
+    }*/
+}
+
+static void resetear_alarma_tanque(void)
+{
+    detener_bomba_tanque();
+    chequeo_seco_activo = 0;
+    lecturas_invalidas = 0;
+    alarma_codigo = ALARMA_SIN_ERROR;
+    estado_tanque = TANQUE_AUTONOMO;
+
+    HAL_GPIO_WritePin(LED_ALARMA_GPIO_Port, LED_ALARMA_Pin, GPIO_PIN_RESET);
+}
+
+static void maquina_estados_dosificador(void)
+{
+    uint8_t hay_botella = Hay_Botella();
+
+    switch (estado_dosi)
+    {
+        case DOSIF_ESPERANDO_BOTELLA:
+            detener_bomba_dosificador();
+
+            if (hay_botella != 0)
+            {
+                estado_dosi = DOSIF_LLENANDO;
+                uart_enviar_texto("OK: BOTELLA_DETECTADA, COMIENZA LLENADO\r\n");
+            }
+            break;
+
+        case DOSIF_ESPERANDO_INICIO:
+            detener_bomba_dosificador();
+            break;
+
+        case DOSIF_LLENANDO:
+        {
+            uint32_t pulsos_umbral_lento;
+
+            if (hay_botella == 0)
+            {
+                abortar_dosificacion();
+                uart_enviar_texto("ERROR: BOTELLA_RETIRADA\r\n");
+                break;
+            }
+
+            if (pulsos_objetivo == 0) //hay receta?
+            {
+                abortar_dosificacion();
+                uart_enviar_texto("ERROR: RECETA_INVALIDA\r\n");
+                break;
+            }
+
+            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100U;
+
+            if (pulsos_caudal >= pulsos_objetivo) //ya llego a los pulsos objetivo?
+            {
+                detener_bomba_dosificador();
+                estado_dosi = DOSIF_BOTELLA_LLENA;
+
+                tanque_generar_evento_llenado();
+
+                uart_enviar_respuesta_valor("OK,LLENADO,COMPLETO,PULSOS=%lu,ML=%lu\r\n", pulsos_caudal, volumen_receta_ml);
+            }
+            else //llena
+            {
+                HAL_GPIO_WritePin(DOSI_IN1_GPIO_Port, DOSI_IN1_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(DOSI_IN2_GPIO_Port, DOSI_IN2_Pin, GPIO_PIN_RESET);
+
+                if (pulsos_caudal < pulsos_umbral_lento) //¿ya llego a los pulsos para que desacelere?
+                {
+                    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, PWM_DOSI_RAPIDO);
+                }
+                else
+                {
+                    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, PWM_DOSI_LENTO);
+                }
+            }
+            break;
+        }
+
+        case DOSIF_BOTELLA_LLENA:
+
+        	detener_bomba_dosificador();
+            if (hay_botella == 0) //cuando retiramos la botella vuelve a arrancar el ciclo
+            {
+                estado_dosi = DOSIF_ESPERANDO_INICIO;
+            }
+            break;
+
+        default:
+            abortar_dosificacion();
+            break;
+    }
+}
+
+static void maquina_estados_tanque(void)
+{
+    uint16_t distancia = HCSR04_Get_Distance_Filtered();
+
+    if ((distancia < 2) || (distancia > ALTURA_TANQUE_CM)) //¿el nivel se sale de los limites?
+    {
+        detener_bomba_tanque(); //frenamos el llenado por seguridad
+
+        if (lecturas_invalidas < UINT8_MAX)
+        {
+            lecturas_invalidas++;
+        }
+
+        if ((lecturas_invalidas >= LECTURAS_INVALIDAS_MAX) && (estado_tanque != TANQUE_ALARMA)) //despues de 5 mediciones malas salta la alama
+        {
+            disparar_alarma(ALARMA_SENSOR_NIVEL);
+        }
+
+        return;
+    }
+
+    //si la medicion es valida
+    lecturas_invalidas = 0;
+    distancia_tanque_cm = distancia;
+    nivel_tanque_filtrado = (uint8_t)(ALTURA_TANQUE_CM - distancia_tanque_cm);
+
+    if (estado_tanque != TANQUE_ALARMA)
+    {
+        if (nivel_tanque_filtrado >= NIVEL_REBOSE_CRITICO_CM)
+        {
+            disparar_alarma(ALARMA_REBOSE);
+        }
+        else if (bomba_tanque_encendida != 0)
+        {
+            if (chequeo_seco_activo == 0)
+            {
+                chequeo_seco_activo = 1;
+                tick_inicio_bomba = HAL_GetTick();
+                nivel_inicial_bomba = nivel_tanque_filtrado;
+            }
+            else if ((HAL_GetTick() - tick_inicio_bomba) >= TIEMPO_MARCHA_SECO_MS)
+            {
+                if (nivel_tanque_filtrado <= nivel_inicial_bomba) //si el nivel no ha aumentado, enccendemos la alarma
+                {
+                    disparar_alarma(ALARMA_MARCHA_SECO);
+                }
+                else  //si aumenta, iniciamos un nuevo periodo de comprobacion
+                {
+                    tick_inicio_bomba = HAL_GetTick();
+                    nivel_inicial_bomba = nivel_tanque_filtrado;
+                }
+            }
+        }
+        else //si la bomba esta apagada
+        {
+            chequeo_seco_activo = 0;
+        }
+    }
+
+    switch (estado_tanque)
+    {
+        case TANQUE_AUTONOMO:
+        {
+            int16_t error = (int16_t)setpoint_nivel - (int16_t)nivel_tanque_filtrado;
+
+            if (error > 0)
+            {
+                uint8_t pwm;
+                bomba_tanque_encendida = 1; //para el control de alarmas tambien
+
+                if (error >= BANDA_PROPORCIONAL_CM)
+                {
+                    pwm = PWM_TANQUE_MAX;
+                }
+                else
+                {
+                    pwm = PWM_TANQUE_MIN + (uint8_t)(((PWM_TANQUE_MAX - PWM_TANQUE_MIN) * error) / BANDA_PROPORCIONAL_CM);
+                }
+
+                HAL_GPIO_WritePin(TANQUE_IN1_GPIO_Port, TANQUE_IN1_Pin, GPIO_PIN_SET);
+                HAL_GPIO_WritePin(TANQUE_IN2_GPIO_Port, TANQUE_IN2_Pin, GPIO_PIN_RESET);
+                __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pwm);
+
+            }
+            else //nivel igual o superior al setpoint
+            {
+                detener_bomba_tanque();
+            }
+            break;
+        }
+
+        case TANQUE_ALARMA:
+        default:
+            detener_bomba_tanque();
+            break;
+    }
+}
+
+static void detener_bomba_tanque(void)
+{
+    bomba_tanque_encendida = 0; //flag de que la bomba esta apagada
+
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
+
+    HAL_GPIO_WritePin(TANQUE_IN1_GPIO_Port, TANQUE_IN1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(TANQUE_IN2_GPIO_Port, TANQUE_IN2_Pin, GPIO_PIN_RESET);
+}
+
+static void detener_bomba_dosificador(void)
+{
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, 0U);
+
+    HAL_GPIO_WritePin(DOSI_IN1_GPIO_Port, DOSI_IN1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DOSI_IN2_GPIO_Port, DOSI_IN2_Pin, GPIO_PIN_RESET);
+}
+
+static void disparar_alarma(uint8_t codigo)
+{
+    estado_tanque = TANQUE_ALARMA;
+    alarma_codigo = codigo;
+    chequeo_seco_activo = 0; //no comprobamos la marcha en seco porque esta detenido
+
+    detener_bomba_tanque();
+    abortar_dosificacion();
+
+    HAL_GPIO_WritePin(LED_ALARMA_GPIO_Port, LED_ALARMA_Pin, GPIO_PIN_SET);
+
+    uart_enviar_respuesta_valor("ALARM,TANQUE,CODIGO=%lu\r\n", codigo, 0U);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if ((GPIO_Pin == CAUDAL_Pin) && (estado_dosi == DOSIF_LLENANDO))
+    {
+        pulsos_caudal++;
+    }
+}
+
+static void interpretar_comando(void) //interprete de comandos por UART local
+{
+    uint32_t valor;
+    char comando;
+
+    if (comando_desbordado != 0)
+    {
+        uart_enviar_texto("ERR,COMANDO_DEMASIADO_LARGO\r\n");
+        return;
+    }
+
+    if (buffer_rx[0] == '\0')
+    {
+        uart_enviar_texto("ERR,COMANDO_VACIO\r\n");
+        return;
+    }
+
+    comando = buffer_rx[0];
+    if ((comando >= 'a') && (comando <= 'z'))
+    {
+        comando = (char)(comando - ('a' - 'A'));
+    }
+
+    if (parsear_uint32(&buffer_rx[1], &valor) == 0U)
+    {
+        uart_enviar_texto("ERR,PARAMETRO_INVALIDO\r\n");
+        return;
+    }
+
+    switch (comando)
+    {
+        case 'S':
+            if (valor > SETPOINT_MAX_CM)
+            {
+                uart_enviar_respuesta_valor("ERR,S,RANGO=0..%lu\r\n",SETPOINT_MAX_CM, 0U);
+                return;
+            }
+
+            setpoint_nivel = (uint8_t)valor;
+            uart_enviar_respuesta_valor("OK,S,%lu\r\n", valor, 0U);
+            break;
+
+        case 'R':
+            if ((valor == 0U) || (valor > VOLUMEN_RECETA_MAX_ML))
+            {
+                uart_enviar_respuesta_valor("ERR,R,RANGO=1..%lu\r\n", VOLUMEN_RECETA_MAX_ML, 0U);
+                return;
+            }
+
+            if ((estado_dosi == DOSIF_LLENANDO) || (estado_dosi == DOSIF_ESPERANDO_BOTELLA))
+            {
+                uart_enviar_texto("ERR,R,DOSIFICACION_ACTIVA\r\n");
+                return;
+            }
+
+            volumen_receta_ml = (uint16_t)valor;
+            pulsos_objetivo = ((valor * PULSOS_X100_POR_ML) + 50U) / 100U;
+            receta_lista = 1U;
+
+            uart_enviar_respuesta_valor("OK,R,ML=%lu,PULSOS=%lu\r\n", valor, pulsos_objetivo);
+            break;
+
+        case 'I':
+            if (valor == 1)
+            {
+                iniciar_dosificacion();
+            }
+            else if (valor == 0)
+            {
+                abortar_dosificacion();
+                uart_enviar_texto("OK,I,ABORTADA\r\n");
+            }
+            else
+            {
+                uart_enviar_texto("ERR,I,USE_0_O_1\r\n");
+            }
+            break;
+
+        case 'A':
+            if (valor == 1U)
+            {
+                resetear_alarma_tanque();
+                uart_enviar_texto("OK,A,RESETEADA\r\n");
+            }
+            else
+            {
+                uart_enviar_texto("ERR,A,USE_1\r\n");
+            }
+            break;
+
+        default:
+            uart_enviar_texto("ERR,COMANDO_DESCONOCIDO\r\n");
+            break;
+    }
+}
+
+static uint16_t HCSR04_Get_Distance_Filtered(void) //filtro para suavizar los cambios repentinos
+{
+    static uint16_t muestras[7] = {0};
+    static uint8_t cantidad = 0;
+    static uint8_t posicion = 0;
+    uint32_t suma = 0;
+
+    uint16_t distancia = HCSR04_Get_Distance();     //esta es la distancia del sensor a la superficie
+
+    if ((distancia < 1) || (distancia > 30)) //rechazamos mediciones claramente inválidas
+    {
+        return 0;
+    }
+
+    muestras[posicion] = distancia;
+    posicion = (uint8_t)((posicion + 1) % 5); //con %5 hace que vuelva a 0 despues de 4  → BUFFER CIRCULAR
+
+    if (cantidad < 7) //al encender todavia no hay 5 mediciones
+    {
+        cantidad++;
+    }
+
+    for (uint8_t i = 0; i < cantidad; i++)
+    {
+        suma += muestras[i];
+    }
+
+    return (uint16_t)(suma / cantidad);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        char dato = (char)rx_byte;
+
+        if ((dato == ':') && (comando_listo == 0))
+        {
+            recibiendo = 1;
+            indice = 0;
+            comando_desbordado = 0;
+            buffer_rx[0] = '\0';
+        }
+        else if ((recibiendo != 0) && (comando_listo == 0))
+        {
+            if ((dato == '\n') || (dato == '\r'))
+            {
+                buffer_rx[indice] = '\0';
+                recibiendo = 0;
+                comando_listo = 1;
+            }
+            else if (indice < (BUFFER_SIZE - 1U))
+            {
+                buffer_rx[indice++] = dato;
+            }
+            else
+            {
+                comando_desbordado = 1;
+            }
+        }
+
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+    }
+    else if (huart->Instance == USART3)
+    {
+        RS485_Rx_Callback(huart);
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        __HAL_UART_CLEAR_OREFLAG(huart);
+
+        recibiendo = 0U;
+        indice = 0U;
+        comando_desbordado = 0U;
+
+        huart->ErrorCode = HAL_UART_ERROR_NONE;
+        huart->RxState = HAL_UART_STATE_READY;
+        __HAL_UNLOCK(huart);
+
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1U);
+    }
+    else if (huart->Instance == USART3)
+    {
+        RS485_Error_Callback(huart);
+    }
+}
+
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+	  for(volatile int i=0; i<1000000; i++); //indicador de que hay un error
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+#ifdef USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */

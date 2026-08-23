@@ -427,10 +427,9 @@ static void Maestro_Procesar_Parada_Alarma(void)
         case 3:
 
             parada_alarma_etapa = 0;
-
             PC_Enviar("*** SECUENCIA DE PARADA FINALIZADA ***\r\n");
-            break;
 
+            break;
 
         default:
             break;

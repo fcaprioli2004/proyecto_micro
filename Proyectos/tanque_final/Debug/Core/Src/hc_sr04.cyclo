@@ -1,3 +1,3 @@
 ../Core/Src/hc_sr04.c:10:6:HAL_TIM_IC_CaptureCallback	5
-../Core/Src/hc_sr04.c:53:6:HCSR04_Init	2
-../Core/Src/hc_sr04.c:76:10:HCSR04_Get_Distance	4
+../Core/Src/hc_sr04.c:48:6:HCSR04_Init	2
+../Core/Src/hc_sr04.c:66:10:HCSR04_Get_Distance	4
