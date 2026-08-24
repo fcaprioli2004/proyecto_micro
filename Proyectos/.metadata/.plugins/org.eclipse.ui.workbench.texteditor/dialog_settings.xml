@@ -3,6 +3,11 @@
 	<item key="hasShownOverlayPopupBefore" value="true"/>
 	<item key="replaceBarOpen" value="true"/>
 	<list key="searchhistory">
+		<item value="CMD_TANQUE_CONTROL_DOSIF"/>
+		<item value="Maestro_Procesar_Parada_Alarma"/>
+		<item value="Maestro_Procesar_Parada_Alarma()"/>
+		<item value="parada_alarma_etapa"/>
+		<item value="inicio_dosif_automatico_pendiente = 0;&#x0A;continuar_cinta_automatico_pendiente = 0;&#x0A;ciclo_esperando_receta = 0;"/>
 		<item value="evento_llenado_pendiente"/>
 		<item value="Maestro_Entrar_Alarma()"/>
 		<item value="CMD_CONFIRMAR_EVENTO_TANQUE"/>
@@ -12,5 +17,9 @@
 		<item value="pc_rx_byte"/>
 		<item value="pc_comando_listo"/>
 		<item value="timeout_respuesta_ms"/>
+	</list>
+	<list key="replacehistory">
+		<item value="Maestro_Procesar_Parada_Sistema()"/>
+		<item value="parada_sistema_etapa"/>
 	</list>
 </section>
