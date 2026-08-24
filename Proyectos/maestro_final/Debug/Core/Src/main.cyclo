@@ -3,7 +3,7 @@
 ../Core/Src/main.c:309:13:PC_Enviar	2
 ../Core/Src/main.c:319:16:PC_Parsear_UInt16	8
 ../Core/Src/main.c:352:13:Maestro_Entrar_Alarma	3
-../Core/Src/main.c:377:13:Maestro_Procesar_Parada_Alarma	9
+../Core/Src/main.c:377:13:Maestro_Procesar_Parada_Sistema	9
 ../Core/Src/main.c:439:13:Maestro_Enviar_Trama	11
 ../Core/Src/main.c:490:13:PC_Procesar_Comando	79
 ../Core/Src/main.c:868:13:Maestro_Confirmar_Evento_Cinta	4

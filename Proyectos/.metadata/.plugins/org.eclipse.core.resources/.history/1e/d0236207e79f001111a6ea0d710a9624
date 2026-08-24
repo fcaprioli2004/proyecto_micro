@@ -124,7 +124,7 @@ static void Maestro_Procesar_Inicio_Dosif_Automatico(void);
 static void Maestro_Procesar_Continuacion_Cinta_Automatica(void);
 
 static void Maestro_Entrar_Alarma(const char *motivo);
-static void Maestro_Procesar_Parada_Sistema(void);
+static void Maestro_Procesar_Parada_Alarma(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -245,11 +245,11 @@ int main(void)
         Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
 
         Maestro_Confirmar_Evento_Cinta();
-        Maestro_Procesar_Inicio_Dosif_Automatico();
+        Maestro_Confirmar_Evento_Peso_Cinta();
         Maestro_Confirmar_Evento_Tanque();
 
+        Maestro_Procesar_Inicio_Dosif_Automatico();
         Maestro_Procesar_Continuacion_Cinta_Automatica();
-        Maestro_Confirmar_Evento_Peso_Cinta();
 
         //procesar comando del usuario si el RS485 está libre y no hay acciones automáticas importantes pendientes.
         if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
@@ -374,7 +374,7 @@ static void Maestro_Entrar_Alarma(const char *motivo)
     }
 }
 
-static void Maestro_Procesar_Parada_Sistema(void)
+static void Maestro_Procesar_Parada_Alarma(void)
 {
     if (parada_sistema_etapa == 0)  //si hay una secuencia de parada pendiente procesala, sino sali
     {

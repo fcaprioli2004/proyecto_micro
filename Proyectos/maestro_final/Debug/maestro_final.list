@@ -39,9 +39,9 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  17 .debug_line   0000a976  00000000  00000000  0002a428  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00082fd9  00000000  00000000  00034d9e  2**0
+ 18 .debug_str    00082fda  00000000  00000000  00034d9e  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000b7d77  2**0
+ 19 .comment      00000043  00000000  00000000  000b7d78  2**0
                   CONTENTS, READONLY
  20 .debug_frame  000021a0  00000000  00000000  000b7dbc  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -462,20 +462,20 @@ int main(void)
                 }
         }
 
-        Maestro_Procesar_Parada_Alarma();
- 80003a0:	f000 f966 	bl	8000670 <Maestro_Procesar_Parada_Alarma>
+        Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
+ 80003a0:	f000 f966 	bl	8000670 <Maestro_Procesar_Parada_Sistema>
 
         Maestro_Confirmar_Evento_Cinta();
  80003a4:	f000 fdb6 	bl	8000f14 <Maestro_Confirmar_Evento_Cinta>
-        Maestro_Confirmar_Evento_Peso_Cinta();
- 80003a8:	f000 fec6 	bl	8001138 <Maestro_Confirmar_Evento_Peso_Cinta>
+        Maestro_Procesar_Inicio_Dosif_Automatico();
+ 80003a8:	f000 fddc 	bl	8000f64 <Maestro_Procesar_Inicio_Dosif_Automatico>
         Maestro_Confirmar_Evento_Tanque();
  80003ac:	f000 fe3a 	bl	8001024 <Maestro_Confirmar_Evento_Tanque>
 
-        Maestro_Procesar_Inicio_Dosif_Automatico();
- 80003b0:	f000 fdd8 	bl	8000f64 <Maestro_Procesar_Inicio_Dosif_Automatico>
         Maestro_Procesar_Continuacion_Cinta_Automatica();
- 80003b4:	f000 fe5e 	bl	8001074 <Maestro_Procesar_Continuacion_Cinta_Automatica>
+ 80003b0:	f000 fe60 	bl	8001074 <Maestro_Procesar_Continuacion_Cinta_Automatica>
+        Maestro_Confirmar_Evento_Peso_Cinta();
+ 80003b4:	f000 fec0 	bl	8001138 <Maestro_Confirmar_Evento_Peso_Cinta>
 
         //procesar comando del usuario si el RS485 está libre y no hay acciones automáticas importantes pendientes.
         if ((pc_comando_listo != 0) && (esperando_respuesta == 0) && (ack_evento_cinta_pendiente == 0) &&
@@ -887,48 +887,48 @@ static void Maestro_Entrar_Alarma(const char *motivo)
  8000668:	08004f88 	.word	0x08004f88
  800066c:	200000a8 	.word	0x200000a8
 
-08000670 <Maestro_Procesar_Parada_Alarma>:
+08000670 <Maestro_Procesar_Parada_Sistema>:
 
-static void Maestro_Procesar_Parada_Alarma(void)
+static void Maestro_Procesar_Parada_Sistema(void)
 {
  8000670:	b580      	push	{r7, lr}
  8000672:	af00      	add	r7, sp, #0
     if (parada_sistema_etapa == 0)  //si hay una secuencia de parada pendiente procesala, sino sali
- 8000674:	4b36      	ldr	r3, [pc, #216]	@ (8000750 <Maestro_Procesar_Parada_Alarma+0xe0>)
+ 8000674:	4b36      	ldr	r3, [pc, #216]	@ (8000750 <Maestro_Procesar_Parada_Sistema+0xe0>)
  8000676:	781b      	ldrb	r3, [r3, #0]
  8000678:	2b00      	cmp	r3, #0
- 800067a:	d05f      	beq.n	800073c <Maestro_Procesar_Parada_Alarma+0xcc>
+ 800067a:	d05f      	beq.n	800073c <Maestro_Procesar_Parada_Sistema+0xcc>
     {
         return;
     }
 
     if (esperando_respuesta != 0) //si hay un mensaje esperando, volvems
- 800067c:	4b35      	ldr	r3, [pc, #212]	@ (8000754 <Maestro_Procesar_Parada_Alarma+0xe4>)
+ 800067c:	4b35      	ldr	r3, [pc, #212]	@ (8000754 <Maestro_Procesar_Parada_Sistema+0xe4>)
  800067e:	781b      	ldrb	r3, [r3, #0]
  8000680:	2b00      	cmp	r3, #0
- 8000682:	d15d      	bne.n	8000740 <Maestro_Procesar_Parada_Alarma+0xd0>
+ 8000682:	d15d      	bne.n	8000740 <Maestro_Procesar_Parada_Sistema+0xd0>
     {
         return;
     }
 
     switch (parada_sistema_etapa)
- 8000684:	4b32      	ldr	r3, [pc, #200]	@ (8000750 <Maestro_Procesar_Parada_Alarma+0xe0>)
+ 8000684:	4b32      	ldr	r3, [pc, #200]	@ (8000750 <Maestro_Procesar_Parada_Sistema+0xe0>)
  8000686:	781b      	ldrb	r3, [r3, #0]
  8000688:	2b03      	cmp	r3, #3
- 800068a:	d050      	beq.n	800072e <Maestro_Procesar_Parada_Alarma+0xbe>
+ 800068a:	d050      	beq.n	800072e <Maestro_Procesar_Parada_Sistema+0xbe>
  800068c:	2b03      	cmp	r3, #3
- 800068e:	dc59      	bgt.n	8000744 <Maestro_Procesar_Parada_Alarma+0xd4>
+ 800068e:	dc59      	bgt.n	8000744 <Maestro_Procesar_Parada_Sistema+0xd4>
  8000690:	2b01      	cmp	r3, #1
- 8000692:	d002      	beq.n	800069a <Maestro_Procesar_Parada_Alarma+0x2a>
+ 8000692:	d002      	beq.n	800069a <Maestro_Procesar_Parada_Sistema+0x2a>
  8000694:	2b02      	cmp	r3, #2
- 8000696:	d025      	beq.n	80006e4 <Maestro_Procesar_Parada_Alarma+0x74>
+ 8000696:	d025      	beq.n	80006e4 <Maestro_Procesar_Parada_Sistema+0x74>
             PC_Enviar("*** SECUENCIA DE PARADA FINALIZADA ***\r\n");
 
             break;
 
         default:
             break;
- 8000698:	e054      	b.n	8000744 <Maestro_Procesar_Parada_Alarma+0xd4>
+ 8000698:	e054      	b.n	8000744 <Maestro_Procesar_Parada_Sistema+0xd4>
             if (RS485_Send_Packet(ID_TANQUE, CMD_TANQUE_CONTROL_DOSIF, 0, 0) == HAL_OK)
  800069a:	2300      	movs	r3, #0
  800069c:	2200      	movs	r2, #0
@@ -937,41 +937,41 @@ static void Maestro_Procesar_Parada_Alarma(void)
  80006a2:	f001 fca3 	bl	8001fec <RS485_Send_Packet>
  80006a6:	4603      	mov	r3, r0
  80006a8:	2b00      	cmp	r3, #0
- 80006aa:	d14d      	bne.n	8000748 <Maestro_Procesar_Parada_Alarma+0xd8>
+ 80006aa:	d14d      	bne.n	8000748 <Maestro_Procesar_Parada_Sistema+0xd8>
                 esperando_respuesta = 1;
- 80006ac:	4b29      	ldr	r3, [pc, #164]	@ (8000754 <Maestro_Procesar_Parada_Alarma+0xe4>)
+ 80006ac:	4b29      	ldr	r3, [pc, #164]	@ (8000754 <Maestro_Procesar_Parada_Sistema+0xe4>)
  80006ae:	2201      	movs	r2, #1
  80006b0:	701a      	strb	r2, [r3, #0]
                 nodo_esperado = ID_TANQUE;
- 80006b2:	4b29      	ldr	r3, [pc, #164]	@ (8000758 <Maestro_Procesar_Parada_Alarma+0xe8>)
+ 80006b2:	4b29      	ldr	r3, [pc, #164]	@ (8000758 <Maestro_Procesar_Parada_Sistema+0xe8>)
  80006b4:	2202      	movs	r2, #2
  80006b6:	701a      	strb	r2, [r3, #0]
                 comando_pendiente = CMD_TANQUE_CONTROL_DOSIF;
- 80006b8:	4b28      	ldr	r3, [pc, #160]	@ (800075c <Maestro_Procesar_Parada_Alarma+0xec>)
+ 80006b8:	4b28      	ldr	r3, [pc, #160]	@ (800075c <Maestro_Procesar_Parada_Sistema+0xec>)
  80006ba:	2214      	movs	r2, #20
  80006bc:	701a      	strb	r2, [r3, #0]
                 valor_pendiente = 0;
- 80006be:	4b28      	ldr	r3, [pc, #160]	@ (8000760 <Maestro_Procesar_Parada_Alarma+0xf0>)
+ 80006be:	4b28      	ldr	r3, [pc, #160]	@ (8000760 <Maestro_Procesar_Parada_Sistema+0xf0>)
  80006c0:	2200      	movs	r2, #0
  80006c2:	801a      	strh	r2, [r3, #0]
                 tick_respuesta = HAL_GetTick();
  80006c4:	f001 ffee 	bl	80026a4 <HAL_GetTick>
  80006c8:	4603      	mov	r3, r0
- 80006ca:	4a26      	ldr	r2, [pc, #152]	@ (8000764 <Maestro_Procesar_Parada_Alarma+0xf4>)
+ 80006ca:	4a26      	ldr	r2, [pc, #152]	@ (8000764 <Maestro_Procesar_Parada_Sistema+0xf4>)
  80006cc:	6013      	str	r3, [r2, #0]
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
- 80006ce:	4b26      	ldr	r3, [pc, #152]	@ (8000768 <Maestro_Procesar_Parada_Alarma+0xf8>)
+ 80006ce:	4b26      	ldr	r3, [pc, #152]	@ (8000768 <Maestro_Procesar_Parada_Sistema+0xf8>)
  80006d0:	f44f 727a 	mov.w	r2, #1000	@ 0x3e8
  80006d4:	601a      	str	r2, [r3, #0]
                 parada_sistema_etapa = 2;
- 80006d6:	4b1e      	ldr	r3, [pc, #120]	@ (8000750 <Maestro_Procesar_Parada_Alarma+0xe0>)
+ 80006d6:	4b1e      	ldr	r3, [pc, #120]	@ (8000750 <Maestro_Procesar_Parada_Sistema+0xe0>)
  80006d8:	2202      	movs	r2, #2
  80006da:	701a      	strb	r2, [r3, #0]
                 PC_Enviar("PARADA -> TANQUE: ABORTAR DOSIFICACION\r\n");
- 80006dc:	4823      	ldr	r0, [pc, #140]	@ (800076c <Maestro_Procesar_Parada_Alarma+0xfc>)
+ 80006dc:	4823      	ldr	r0, [pc, #140]	@ (800076c <Maestro_Procesar_Parada_Sistema+0xfc>)
  80006de:	f7ff ff29 	bl	8000534 <PC_Enviar>
             break;
- 80006e2:	e031      	b.n	8000748 <Maestro_Procesar_Parada_Alarma+0xd8>
+ 80006e2:	e031      	b.n	8000748 <Maestro_Procesar_Parada_Sistema+0xd8>
             if (RS485_Send_Packet(ID_CINTA, CMD_CINTA_ACTIVAR, 0, 0) == HAL_OK)
  80006e4:	2300      	movs	r3, #0
  80006e6:	2200      	movs	r2, #0
@@ -980,62 +980,62 @@ static void Maestro_Procesar_Parada_Alarma(void)
  80006ec:	f001 fc7e 	bl	8001fec <RS485_Send_Packet>
  80006f0:	4603      	mov	r3, r0
  80006f2:	2b00      	cmp	r3, #0
- 80006f4:	d12a      	bne.n	800074c <Maestro_Procesar_Parada_Alarma+0xdc>
+ 80006f4:	d12a      	bne.n	800074c <Maestro_Procesar_Parada_Sistema+0xdc>
                 esperando_respuesta = 1;
- 80006f6:	4b17      	ldr	r3, [pc, #92]	@ (8000754 <Maestro_Procesar_Parada_Alarma+0xe4>)
+ 80006f6:	4b17      	ldr	r3, [pc, #92]	@ (8000754 <Maestro_Procesar_Parada_Sistema+0xe4>)
  80006f8:	2201      	movs	r2, #1
  80006fa:	701a      	strb	r2, [r3, #0]
                 nodo_esperado = ID_CINTA;
- 80006fc:	4b16      	ldr	r3, [pc, #88]	@ (8000758 <Maestro_Procesar_Parada_Alarma+0xe8>)
+ 80006fc:	4b16      	ldr	r3, [pc, #88]	@ (8000758 <Maestro_Procesar_Parada_Sistema+0xe8>)
  80006fe:	2201      	movs	r2, #1
  8000700:	701a      	strb	r2, [r3, #0]
                 comando_pendiente = CMD_CINTA_ACTIVAR;
- 8000702:	4b16      	ldr	r3, [pc, #88]	@ (800075c <Maestro_Procesar_Parada_Alarma+0xec>)
+ 8000702:	4b16      	ldr	r3, [pc, #88]	@ (800075c <Maestro_Procesar_Parada_Sistema+0xec>)
  8000704:	2224      	movs	r2, #36	@ 0x24
  8000706:	701a      	strb	r2, [r3, #0]
                 valor_pendiente = 0;
- 8000708:	4b15      	ldr	r3, [pc, #84]	@ (8000760 <Maestro_Procesar_Parada_Alarma+0xf0>)
+ 8000708:	4b15      	ldr	r3, [pc, #84]	@ (8000760 <Maestro_Procesar_Parada_Sistema+0xf0>)
  800070a:	2200      	movs	r2, #0
  800070c:	801a      	strh	r2, [r3, #0]
                 tick_respuesta = HAL_GetTick();
  800070e:	f001 ffc9 	bl	80026a4 <HAL_GetTick>
  8000712:	4603      	mov	r3, r0
- 8000714:	4a13      	ldr	r2, [pc, #76]	@ (8000764 <Maestro_Procesar_Parada_Alarma+0xf4>)
+ 8000714:	4a13      	ldr	r2, [pc, #76]	@ (8000764 <Maestro_Procesar_Parada_Sistema+0xf4>)
  8000716:	6013      	str	r3, [r2, #0]
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
- 8000718:	4b13      	ldr	r3, [pc, #76]	@ (8000768 <Maestro_Procesar_Parada_Alarma+0xf8>)
+ 8000718:	4b13      	ldr	r3, [pc, #76]	@ (8000768 <Maestro_Procesar_Parada_Sistema+0xf8>)
  800071a:	f44f 727a 	mov.w	r2, #1000	@ 0x3e8
  800071e:	601a      	str	r2, [r3, #0]
                 parada_sistema_etapa = 3;
- 8000720:	4b0b      	ldr	r3, [pc, #44]	@ (8000750 <Maestro_Procesar_Parada_Alarma+0xe0>)
+ 8000720:	4b0b      	ldr	r3, [pc, #44]	@ (8000750 <Maestro_Procesar_Parada_Sistema+0xe0>)
  8000722:	2203      	movs	r2, #3
  8000724:	701a      	strb	r2, [r3, #0]
                 PC_Enviar("PARADA -> CINTA: DESACTIVAR\r\n");
- 8000726:	4812      	ldr	r0, [pc, #72]	@ (8000770 <Maestro_Procesar_Parada_Alarma+0x100>)
+ 8000726:	4812      	ldr	r0, [pc, #72]	@ (8000770 <Maestro_Procesar_Parada_Sistema+0x100>)
  8000728:	f7ff ff04 	bl	8000534 <PC_Enviar>
             break;
- 800072c:	e00e      	b.n	800074c <Maestro_Procesar_Parada_Alarma+0xdc>
+ 800072c:	e00e      	b.n	800074c <Maestro_Procesar_Parada_Sistema+0xdc>
             parada_sistema_etapa = 0;
- 800072e:	4b08      	ldr	r3, [pc, #32]	@ (8000750 <Maestro_Procesar_Parada_Alarma+0xe0>)
+ 800072e:	4b08      	ldr	r3, [pc, #32]	@ (8000750 <Maestro_Procesar_Parada_Sistema+0xe0>)
  8000730:	2200      	movs	r2, #0
  8000732:	701a      	strb	r2, [r3, #0]
             PC_Enviar("*** SECUENCIA DE PARADA FINALIZADA ***\r\n");
- 8000734:	480f      	ldr	r0, [pc, #60]	@ (8000774 <Maestro_Procesar_Parada_Alarma+0x104>)
+ 8000734:	480f      	ldr	r0, [pc, #60]	@ (8000774 <Maestro_Procesar_Parada_Sistema+0x104>)
  8000736:	f7ff fefd 	bl	8000534 <PC_Enviar>
             break;
- 800073a:	e008      	b.n	800074e <Maestro_Procesar_Parada_Alarma+0xde>
+ 800073a:	e008      	b.n	800074e <Maestro_Procesar_Parada_Sistema+0xde>
         return;
  800073c:	bf00      	nop
- 800073e:	e006      	b.n	800074e <Maestro_Procesar_Parada_Alarma+0xde>
+ 800073e:	e006      	b.n	800074e <Maestro_Procesar_Parada_Sistema+0xde>
         return;
  8000740:	bf00      	nop
- 8000742:	e004      	b.n	800074e <Maestro_Procesar_Parada_Alarma+0xde>
+ 8000742:	e004      	b.n	800074e <Maestro_Procesar_Parada_Sistema+0xde>
             break;
  8000744:	bf00      	nop
- 8000746:	e002      	b.n	800074e <Maestro_Procesar_Parada_Alarma+0xde>
+ 8000746:	e002      	b.n	800074e <Maestro_Procesar_Parada_Sistema+0xde>
             break;
  8000748:	bf00      	nop
- 800074a:	e000      	b.n	800074e <Maestro_Procesar_Parada_Alarma+0xde>
+ 800074a:	e000      	b.n	800074e <Maestro_Procesar_Parada_Sistema+0xde>
             break;
  800074c:	bf00      	nop
     }
