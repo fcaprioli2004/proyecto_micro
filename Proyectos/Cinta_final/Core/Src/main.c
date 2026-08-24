@@ -43,6 +43,7 @@ typedef enum
 	E_activado = 		2,
 	E_error = 			3
 } ESTADO;
+
 typedef enum
 {
 	C_andando = 			0,
@@ -68,7 +69,7 @@ typedef enum
 #define PULSE_ABIERTO   800 //servo desvia objeto
 
 #define PESO_DETECCION  30000 // peso minimo para deteccion de la cinta
-#define PESO_LIBRE      20000 // histerisis para deteccion peso libre
+#define PESO_LIBRE      20000 // histerisis para deteccion peso libre, para pesos menores detectamos que esta libre
 
 #define SENSOR_ANTIRREBOTE_MS 10
 #define FIFO_TAMANO 10
@@ -86,6 +87,7 @@ typedef struct // estructura FIFO para procesar clasificacion
     uint8_t salida;
     uint8_t cantidad;
 } FIFO;
+
 typedef struct //estructura para definir cada clasificacion, servo=objeto
 {
     uint8_t id; //id de cada servo
@@ -108,6 +110,7 @@ typedef struct //estructura para definir cada clasificacion, servo=objeto
     uint16_t pwm_abierto;
 
 } CLASIFICADOR;
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -121,6 +124,7 @@ typedef struct //estructura para definir cada clasificacion, servo=objeto
 static volatile ESTADO Estado = E_desactivado;
 static volatile SUB_ESTADO sub_Estado = C_detenida;
 
+//variables de la UART local
 uint8_t rx_byte;
 volatile uint8_t recibiendo = 0;
 volatile uint8_t comando_listo = 0;

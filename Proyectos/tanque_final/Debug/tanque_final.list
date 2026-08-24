@@ -37,15 +37,15 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  000185af  00000000  00000000  0001905d  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0001046a  00000000  00000000  0003160c  2**0
+ 17 .debug_line   00010469  00000000  00000000  0003160c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008b528  00000000  00000000  00041a76  2**0
+ 18 .debug_str    0008b528  00000000  00000000  00041a75  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000ccf9e  2**0
+ 19 .comment      00000043  00000000  00000000  000ccf9d  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000039c8  00000000  00000000  000ccfe4  2**2
+ 20 .debug_frame  000039c8  00000000  00000000  000ccfe0  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007a  00000000  00000000  000d09ac  2**0
+ 21 .debug_line_str 0000007a  00000000  00000000  000d09a8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2222,7 +2222,7 @@ static void maquina_estados_dosificador(void)
  8000ecc:	e04c      	b.n	8000f68 <maquina_estados_dosificador+0x114>
             }
 
-            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100U;
+            pulsos_umbral_lento = (pulsos_objetivo * PORCENTAJE_CAMBIO_LENTO) / 100;
  8000ece:	4b2b      	ldr	r3, [pc, #172]	@ (8000f7c <maquina_estados_dosificador+0x128>)
  8000ed0:	681a      	ldr	r2, [r3, #0]
  8000ed2:	4613      	mov	r3, r2
@@ -2252,7 +2252,6 @@ static void maquina_estados_dosificador(void)
 
                 tanque_generar_evento_llenado();
  8000efc:	f7ff fc5e 	bl	80007bc <tanque_generar_evento_llenado>
-
                 uart_enviar_respuesta_valor("OK,LLENADO,COMPLETO,PULSOS=%lu,ML=%lu\r\n", pulsos_caudal, volumen_receta_ml);
  8000f00:	4b21      	ldr	r3, [pc, #132]	@ (8000f88 <maquina_estados_dosificador+0x134>)
  8000f02:	681b      	ldr	r3, [r3, #0]

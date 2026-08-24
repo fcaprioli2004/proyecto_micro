@@ -1,0 +1,10 @@
+17:29:00 **** Incremental Build of configuration Debug for project Cinta_final ****
+make -j8 all 
+arm-none-eabi-size  Cinta_final.elf 
+   text	   data	    bss	    dec	    hex	filename
+  42164	    476	   2868	  45508	   b1c4	Cinta_final.elf
+Finished building: default.size.stdout
+ 
+
+17:29:00 Build Finished. 0 errors, 0 warnings. (took 256ms)
+

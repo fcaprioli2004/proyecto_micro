@@ -714,7 +714,6 @@ static void maquina_estados_dosificador(void)
                 estado_dosi = DOSIF_BOTELLA_LLENA;
 
                 tanque_generar_evento_llenado();
-
                 uart_enviar_respuesta_valor("OK,LLENADO,COMPLETO,PULSOS=%lu,ML=%lu\r\n", pulsos_caudal, volumen_receta_ml);
             }
             else //llena

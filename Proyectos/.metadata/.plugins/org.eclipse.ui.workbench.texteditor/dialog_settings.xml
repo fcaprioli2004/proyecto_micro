@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="hasShownOverlayPopupBefore" value="true"/>
+	<item key="replaceBarOpen" value="true"/>
+	<list key="searchhistory">
+		<item value="evento_llenado_pendiente"/>
+		<item value="Maestro_Entrar_Alarma()"/>
+		<item value="CMD_CONFIRMAR_EVENTO_TANQUE"/>
+		<item value="tick_polling"/>
+		<item value="continuar_cinta_automatico_pendiente"/>
+		<item value="mensaje_pc"/>
+		<item value="pc_rx_byte"/>
+		<item value="pc_comando_listo"/>
+		<item value="timeout_respuesta_ms"/>
+	</list>
+</section>
