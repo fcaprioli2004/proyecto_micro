@@ -93,7 +93,7 @@ static uint32_t tick_polling = 0;
 static uint32_t tick_supervision = 0;
 static uint8_t nodo_supervision_siguiente = ID_TANQUE;
 
-static uint8_t parada_sistema_etapa = 0; //convierte la parada global en una pequeña secuencia
+static uint8_t parada_alarma_etapa = 0; //convierte la parada global en una pequeña secuencia
 
 /* USER CODE END PV */
 
@@ -180,7 +180,6 @@ int main(void)
     PC_Enviar(":MN    = ESTADO GENERAL DEL MAESTRO\r\n");
     PC_Enviar(":MA1   = ACTIVAR SISTEMA\r\n");
     PC_Enviar(":MA0   = DESACTIVAR SISTEMA\r\n");
-    PC_Enviar(":MR1   = RESETEAR ALARMA\r\n");
 
     PC_Enviar(":TP    = PING TANQUE\r\n");
     PC_Enviar(":TN    = ESTADO TANQUE\r\n");
@@ -200,6 +199,7 @@ int main(void)
     PC_Enviar(":CA0   = DESACTIVAR CINTA\r\n");
     PC_Enviar(":CB1   = ARRANCAR BANDA\r\n");
     PC_Enviar(":CB0   = DETENER BANDA\r\n");
+    PC_Enviar(":CB2   = INICIAR PESAJE MANUAL\r\n");
     PC_Enviar(":CD1   = CONTINUAR PESAJE\r\n");
 
   /* USER CODE END 2 */
@@ -242,7 +242,7 @@ int main(void)
                 }
         }
 
-        Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
+        Maestro_Procesar_Parada_Alarma();
 
         Maestro_Confirmar_Evento_Cinta();
         Maestro_Confirmar_Evento_Peso_Cinta();
@@ -363,7 +363,7 @@ static void Maestro_Entrar_Alarma(const char *motivo)
     continuar_cinta_automatico_pendiente = 0;
     ciclo_esperando_receta = 0;
 
-    parada_sistema_etapa = 1;    //bandera para iniciar la parada
+    parada_alarma_etapa = 1;    //bandera para iniciar la parada
 
     PC_Enviar("\r\n*** SISTEMA EN ALARMA ***\r\n");
 
@@ -376,7 +376,7 @@ static void Maestro_Entrar_Alarma(const char *motivo)
 
 static void Maestro_Procesar_Parada_Alarma(void)
 {
-    if (parada_sistema_etapa == 0)  //si hay una secuencia de parada pendiente procesala, sino sali
+    if (estado_maestro != M_ALARMA)
     {
         return;
     }
@@ -386,7 +386,7 @@ static void Maestro_Procesar_Parada_Alarma(void)
         return;
     }
 
-    switch (parada_sistema_etapa)
+    switch (parada_alarma_etapa)
     {
         case 1: //detener dosificador
 
@@ -400,7 +400,7 @@ static void Maestro_Procesar_Parada_Alarma(void)
                 tick_respuesta = HAL_GetTick();
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
-                parada_sistema_etapa = 2;
+                parada_alarma_etapa = 2;
                 PC_Enviar("PARADA -> TANQUE: ABORTAR DOSIFICACION\r\n");
             }
 
@@ -418,7 +418,7 @@ static void Maestro_Procesar_Parada_Alarma(void)
                 tick_respuesta = HAL_GetTick();
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
-                parada_sistema_etapa = 3;
+                parada_alarma_etapa = 3;
                 PC_Enviar("PARADA -> CINTA: DESACTIVAR\r\n");
             }
 
@@ -426,7 +426,7 @@ static void Maestro_Procesar_Parada_Alarma(void)
 
         case 3:
 
-            parada_sistema_etapa = 0;
+            parada_alarma_etapa = 0;
             PC_Enviar("*** SECUENCIA DE PARADA FINALIZADA ***\r\n");
 
             break;
@@ -642,7 +642,7 @@ static void PC_Procesar_Comando(void)
                     return;
                 }
 
-                parada_sistema_etapa = 0;
+                parada_alarma_etapa = 0;
                 estado_maestro = M_INACTIVO;
 
                 PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n");
@@ -737,9 +737,6 @@ static void PC_Procesar_Comando(void)
 					inicio_dosif_automatico_pendiente = 0;
 					continuar_cinta_automatico_pendiente = 0;
 					ciclo_esperando_receta = 0;
-
-					estado_maestro = M_INACTIVO;
-					parada_sistema_etapa = 1;
 
 					estado_maestro = M_INACTIVO;
 
@@ -1008,11 +1005,6 @@ static void Maestro_Procesar_Polling(void)
     uint8_t destino;
     uint8_t comando;
     uint8_t consulta_supervision = 0;
-
-    if (parada_sistema_etapa != 0) //si estamos procesando una parada le damos prioridad
-    {
-        return;
-    }
 
     if (estado_maestro == M_ALARMA)
     {

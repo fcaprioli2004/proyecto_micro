@@ -242,7 +242,7 @@ int main(void)
                 }
         }
 
-        Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
+        Maestro_Procesar_Parada_Alarma();
 
         Maestro_Confirmar_Evento_Cinta();
         Maestro_Confirmar_Evento_Peso_Cinta();
