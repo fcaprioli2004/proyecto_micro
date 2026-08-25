@@ -1372,15 +1372,10 @@ static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
                     if (valor_pendiente == 0)
                     {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA DETENIENDOSE\r\n");
-                    }
-                    else if (valor_pendiente == 1)
-                    {
+                    } else {
                         (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA ARRANCANDO\r\n");
                     }
-                    else
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: PESAJE INICIADO\r\n");
-                    }
+
                     break;
 
                 case CMD_CINTA_CONTINUAR_PESAJE:

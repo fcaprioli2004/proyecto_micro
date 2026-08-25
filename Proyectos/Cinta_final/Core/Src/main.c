@@ -169,6 +169,7 @@ void desactivar(void);
 uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio);
 uint8_t FIFO_Agregar(FIFO *cola, uint8_t valor);
 uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor);
+void FIFO_Limpiar(FIFO *cola);
 uint8_t Obtener_Destino(int32_t peso);
 void Procesar_Clasificador(uint8_t indice);
 static void procesar_rs485_cinta(void);
@@ -698,7 +699,6 @@ static void procesar_rs485_cinta(void)
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando, NACK_PARAMETRO_INVALIDO);
             } else if (param_l == 0U)   {
                 desactivar();
-                Estado = E_desactivado;
                 cinta_responder_resultado(origen, CMD_RESP_ACK, comando, ACK_OK);
             }  else if (configuracion_lista == 0U){
                 cinta_responder_resultado(origen, CMD_RESP_NACK, comando,NACK_SIN_CONFIGURACION);
@@ -945,6 +945,8 @@ void Set_DutyCycle_DC_PWM(uint16_t valor_pwm)
 	}
 }
 void desactivar(void){
+    Estado = E_desactivado;
+
 	HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
 
@@ -953,16 +955,19 @@ void desactivar(void){
 	HAL_GPIO_WritePin(GPIOB,DC_IN2_Pin,GPIO_PIN_RESET);
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 
-	for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
-	{
-	    __HAL_TIM_SET_COMPARE(clasificadores[i].timer, clasificadores[i].pwm_channel, clasificadores[i].pwm_reposo);
+	uint32_t ahora = HAL_GetTick();
+	for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+	    CLASIFICADOR *c = &clasificadores[i];
+	    __HAL_TIM_SET_COMPARE(c->timer,c->pwm_channel,c->pwm_reposo); //cerrar servos
+	    FIFO_Limpiar(&c->cola); //vaciar cola
+	    c->sensor_pendiente = 0U; //eliminar eventos pendientes del sensor
+	    c->tick_sensor = 0U;
+	    c->ultimo_sensor = ahora;
 	}
 
+	sub_Estado = C_detenida;
     cantidad_pesajes = 0;
     weight = 0;
-    objetos_ok = 0;
-    objetos_descarte = 0;
-    objetos_control = 0;
 
     aviso_esperando_pendiente = 0U;
     aviso_peso_pendiente = 0U;
@@ -1044,6 +1049,13 @@ uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor)
     }
     cola->cantidad--;
     return 1;
+}
+
+void FIFO_Limpiar(FIFO *cola)
+{
+    cola->entrada = 0U;
+    cola->salida = 0U;
+    cola->cantidad = 0U;
 }
 
 uint8_t Obtener_Destino(int32_t peso)
