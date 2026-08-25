@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 
-/* Comandos generales. */
+/* para comprobar funcionnamiento*/
 #define CMD_PING                         0x01U
 #define CMD_PONG                         0x81U
 
@@ -17,7 +17,7 @@
 #define CMD_PEDIR_ESTADO_TANQUE          0x10U
 #define CMD_PEDIR_ESTADO_DOSIF           0x11U
 
-/* Escrituras en el tanque/dosificador. */
+/* ordenes en el tanque/dosificador. */
 #define CMD_TANQUE_SETPOINT              0x12U
 #define CMD_TANQUE_RECETA                0x13U
 #define CMD_TANQUE_CONTROL_DOSIF         0x14U
@@ -27,7 +27,7 @@
 /* Consulta de la cinta. */
 #define CMD_PEDIR_ESTADO_CINTA           0x20U
 
-/* Órdenes de la cinta. */
+/* ordenes de la cinta. */
 #define CMD_CINTA_CONFIGURAR             0x21U
 #define CMD_CINTA_TARA                   0x22U
 #define CMD_CINTA_CALIBRAR               0x23U
@@ -36,17 +36,18 @@
 #define CMD_CINTA_CONTINUAR_PESAJE       0x26U
 #define CMD_PEDIR_EVENTO_CINTA           0x27U
 
-/* Evento espontáneo de la cinta y su confirmación. */
+//comandos para el proceso automático
+//proceso automático → llega botella a la celda
 #define CMD_EVENTO_CINTA_ESPERANDO_MAESTRO 0x70U
 #define CMD_CONFIRMAR_EVENTO_CINTA          0x71U
 
-/* Evento espontáneo del tanque al completar el llenado. */
+//proceso automático → tanque termina el llenado
 #define CMD_EVENTO_TANQUE_LLENADO_COMPLETO  0x72U
 #define CMD_CONFIRMAR_EVENTO_TANQUE         0x73U
 
 /*
  * Evento espontáneo de la cinta al terminar el pesaje.
- * PARAM_H:PARAM_L transportan el peso en décimas de gramo.
+ * PARAM_H y PARAM_L transportan el peso en décimas de gramo.
  * Ejemplo: 1234 representa 123,4 g.
  */
 #define CMD_EVENTO_CINTA_PESAJE_COMPLETO    0x74U
@@ -54,16 +55,16 @@
 
 #define CMD_RESP_SIN_EVENTO                 0x76U
 
-/* Respuestas de estado. */
+//respuesta de los esclavos
 #define CMD_RESP_ESTADO_CINTA            0x80U
 #define CMD_RESP_ESTADO_TANQUE           0x90U
 #define CMD_RESP_ESTADO_DOSIF            0x91U
 
-/* Confirmaciones de órdenes de escritura. */
+//confirmaciones de recepción del mensaje
 #define CMD_RESP_ACK                     0xA0U
 #define CMD_RESP_NACK                    0xA1U
 
-/* Códigos positivos incluidos en un ACK. */
+//para dar información adicional del ACK
 #define ACK_OK                           0x00U
 #define ACK_ESPERANDO_BOTELLA            0x01U
 

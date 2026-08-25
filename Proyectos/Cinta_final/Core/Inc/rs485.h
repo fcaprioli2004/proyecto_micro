@@ -1,16 +1,13 @@
 #ifndef INC_RS485_H_
 #define INC_RS485_H_
 
-#include "main.h"
+#include "main.h" //para la HAL
 
-/* =========================================================
- * DIRECCIONES DE LOS NODOS
- * ========================================================= */
-
-#define ID_MAESTRO          0x00U
-#define ID_CINTA            0x01U
-#define ID_TANQUE           0x02U
-#define ID_BROADCAST        0xFFU  //mensaje dirigido a todos los nodos
+//direccion de los nodos
+#define ID_MAESTRO          0x00
+#define ID_CINTA            0x01
+#define ID_TANQUE           0x02
+#define ID_BROADCAST        0xFF
 
 /* =========================================================
  * FORMATO DE LA TRAMA
@@ -26,17 +23,17 @@
  * Byte 7: END
  */
 
-//por ejemplo para enviar el 500 decimal = 0x01F4
-/*PARAM_H = 0x01
-PARAM_L = 0xF4*/
+#define RS485_FRAME_SIZE    8
+#define RS485_START_BYTE    0x3A  // ':'
+#define RS485_END_BYTE      0x0D   // '\r'
 
-//trama completa: : DESTINO ORIGEN COMANDO PARAM_H PARAM_L CRC \r
+/* La librería solo interpreta paquetes dirigidos al ID local o
+ * a ID_BROADCAST. El main debe copiar los datos y después
+ * poner rs485_paquete_listo en 0.
+ */
 
-#define RS485_FRAME_SIZE    8U   //trama de 8 bytes
-#define RS485_START_BYTE    0x3AU   /* corresponde al ASCII ':'  */
-#define RS485_END_BYTE      0x0DU   /* corresponde al ASCII '\r' */
-
-extern volatile uint8_t rs485_paquete_listo;  // 0 = NO hay paquete nuevo, 1 = SI hay
+//extern para usarlas en rs485.c
+extern volatile uint8_t rs485_paquete_listo;  // 1 → hay un paquete
 extern volatile uint8_t rs485_rx_destino;
 extern volatile uint8_t rs485_rx_origen;
 extern volatile uint8_t rs485_rx_cmd;
@@ -47,11 +44,15 @@ extern volatile uint8_t rs485_rx_param_l;
  * API
  * ========================================================= */
 
-HAL_StatusTypeDef RS485_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *ctrl_port, uint16_t ctrl_pin, uint8_t id_local);
+HAL_StatusTypeDef RS485_Init(
+		UART_HandleTypeDef *huart,
+		GPIO_TypeDef *ctrl_port, // para controlar DE/RE del MAX485
+		uint16_t ctrl_pin,   // para controlar DE/RE del MAX485
+		uint8_t id_local);  // quien soy?
 
 HAL_StatusTypeDef RS485_Send_Packet(uint8_t id_destino, uint8_t comando, uint8_t param_h, uint8_t param_l);
 
-void RS485_Rx_Callback(UART_HandleTypeDef *huart);
+void RS485_Rx_Callback(UART_HandleTypeDef *huart); //para que la UART llame a este callback y la libreria procese la recepción
 void RS485_Error_Callback(UART_HandleTypeDef *huart);
 
 #endif /* INC_RS485_H_ */

@@ -32,7 +32,7 @@ typedef enum
 #define PC_CMD_BUFFER_SIZE       24
 
 #define RESPUESTA_TIMEOUT_MS          1000
-#define RESPUESTA_TIMEOUT_LARGO_MS    15000 //para las operaciones de la cinta que pueden tardar mas
+#define RESPUESTA_TIMEOUT_LARGO_MS    10000 //para las operaciones de la cinta que pueden tardar mas
 
 #define PING_PARAM_H             0x12
 #define PING_PARAM_L             0x34
@@ -246,9 +246,10 @@ int main(void)
 
         Maestro_Confirmar_Evento_Cinta();
         Maestro_Procesar_Inicio_Dosif_Automatico();
-        Maestro_Confirmar_Evento_Tanque();
 
+        Maestro_Confirmar_Evento_Tanque();
         Maestro_Procesar_Continuacion_Cinta_Automatica();
+
         Maestro_Confirmar_Evento_Peso_Cinta();
 
         //procesar comando del usuario si el RS485 está libre y no hay acciones automáticas importantes pendientes.
@@ -262,7 +263,7 @@ int main(void)
 
         Maestro_Procesar_Polling();
   /* USER CODE END 3 */
-}
+  }
 }
 
 /**
@@ -822,9 +823,9 @@ static void PC_Procesar_Comando(void)
                 return;
             }
 
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 2))
+            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1))
             {
-                PC_Enviar("ERROR: USE :CB0, :CB1 O :CB2\r\n");
+                PC_Enviar("ERROR: USE :CB0 o :CB1 \r\n");
                 return;
             }
 
