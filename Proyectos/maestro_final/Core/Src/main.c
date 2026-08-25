@@ -93,6 +93,8 @@ static uint32_t tick_polling = 0;
 static uint32_t tick_supervision = 0;
 static uint8_t nodo_supervision_siguiente = ID_TANQUE;
 
+static uint8_t flag_consulta_supervision = 0;
+
 static uint8_t parada_sistema_etapa = 0; //convierte la parada global en una pequeña secuencia
 
 /* USER CODE END PV */
@@ -229,6 +231,7 @@ int main(void)
                 comando_pendiente = 0;
                 valor_pendiente = 0;
 
+
                 timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 
                 if (timeout_inicio_automatico == 1) //era del inicio del dosif?
@@ -236,10 +239,12 @@ int main(void)
 					inicio_dosif_automatico_pendiente = 0;
 					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
 				}
-                else if (consulta_polling == 0) //NO era del polling? si era del polling no mostramos nada para no llenar la pantalla
+                else if ((consulta_polling == 0) && (flag_consulta_supervision == 0)) //NO era del polling? si era del polling no mostramos nada para no llenar la pantalla
                 {
                     PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");
                 }
+
+                flag_consulta_supervision = 0;
         }
 
         Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
@@ -1008,7 +1013,6 @@ static void Maestro_Procesar_Polling(void)
     uint32_t ahora;
     uint8_t destino;
     uint8_t comando;
-    uint8_t consulta_supervision = 0;
 
     if (parada_sistema_etapa != 0) //si estamos procesando una parada le damos prioridad
     {
@@ -1030,6 +1034,7 @@ static void Maestro_Procesar_Polling(void)
         return;
     }
 
+    uint8_t consulta_supervision = 0;
     ahora = HAL_GetTick();
 
     //primero → supervisión de estado y alarmas general
@@ -1095,6 +1100,8 @@ static void Maestro_Procesar_Polling(void)
     nodo_esperado = destino;
     comando_pendiente = comando;
     valor_pendiente = 0;
+
+    flag_consulta_supervision = consulta_supervision;
 
     tick_respuesta = HAL_GetTick();
     timeout_respuesta_ms = POLLING_TIMEOUT_MS;
@@ -1259,8 +1266,11 @@ static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
     {
         respuesta_aceptada = 1;
 
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", param_l, Maestro_Nombre_Alarma_Tanque(param_h));
-        PC_Enviar(mensaje_pc);
+        if (flag_consulta_supervision == 0)
+        {
+			(void)snprintf(mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", param_l, Maestro_Nombre_Alarma_Tanque(param_h));
+			PC_Enviar(mensaje_pc);
+        }
 
         if (param_h != 0)  //si la alarma distinto de 0, se arranca la detención del sistema.
         {
@@ -1279,9 +1289,12 @@ static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
     {
         respuesta_aceptada = 1;
 
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "CINTA: ESTADO=%s,SUBESTADO=%s\r\n", Maestro_Nombre_Estado_Cinta(param_h),
-        	    Maestro_Nombre_Subestado_Cinta(param_l));
-        PC_Enviar(mensaje_pc);
+        if (flag_consulta_supervision == 0)
+        {
+			(void)snprintf(mensaje_pc, sizeof(mensaje_pc), "CINTA: ESTADO=%s,SUBESTADO=%s\r\n", Maestro_Nombre_Estado_Cinta(param_h),
+					Maestro_Nombre_Subestado_Cinta(param_l));
+			PC_Enviar(mensaje_pc);
+        }
 
         if (param_h == 3) //estado 3 = error
         {
@@ -1421,6 +1434,9 @@ static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
         nodo_esperado = 0;
         comando_pendiente = 0;
         valor_pendiente = 0;
+
+        flag_consulta_supervision = 0;
+
         timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
     }
 }
