@@ -69,10 +69,11 @@ static uint32_t tick_respuesta = 0;
 static uint32_t timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 static char mensaje_pc[160]; //buffer auxiliar para construir textos con snprintf() y mostrar por pantalla
 
+//variables manejo de eventos nodos
 static uint8_t ack_evento_cinta_pendiente = 0;
 static uint16_t ack_evento_cinta_secuencia = 0;
 static uint16_t ultima_secuencia_evento_cinta = 0;
-static uint8_t ultima_secuencia_evento_valida = 0;  //para no ejecutar dos veces la misma accion automática
+static uint8_t ultima_secuencia_evento_cinta_valida = 0;  //para no ejecutar dos veces la misma accion automática
 
 static uint8_t ack_evento_peso_cinta_pendiente = 0;
 static uint16_t ack_evento_peso_cinta_valor = 0;
@@ -92,7 +93,6 @@ static uint32_t tick_polling = 0;
 
 static uint32_t tick_supervision = 0;
 static uint8_t nodo_supervision_siguiente = ID_TANQUE;
-
 static uint8_t flag_consulta_supervision = 0;
 
 static uint8_t parada_sistema_etapa = 0; //convierte la parada global en una pequeña secuencia
@@ -122,7 +122,6 @@ static const char *Maestro_Nombre_Subestado_Cinta(uint8_t subestado);
 
 static void Maestro_Confirmar_Evento_Cinta(void);
 static void Maestro_Confirmar_Evento_Peso_Cinta(void);
-
 static void Maestro_Confirmar_Evento_Tanque(void);
 static void Maestro_Procesar_Inicio_Dosif_Automatico(void);
 static void Maestro_Procesar_Continuacion_Cinta_Automatica(void);
@@ -468,12 +467,10 @@ static void PC_Procesar_Comando(void)
 {
     char nodo;
     char comando;
-    uint8_t destino;
-    uint16_t valor = 0;
+    uint16_t valor = 0U;
     const char *parametro;
 
-    if ((pc_cmd_buffer[0] == '\0') || (pc_cmd_buffer[1] == '\0'))
-    {
+    if ((pc_cmd_buffer[0] == '\0') ||(pc_cmd_buffer[1] == '\0')){ //VERFICAMOS MENSAJE
         PC_Enviar("ERROR: COMANDO INCOMPLETO\r\n");
         return;
     }
@@ -482,366 +479,281 @@ static void PC_Procesar_Comando(void)
     comando = pc_cmd_buffer[1];
     parametro = &pc_cmd_buffer[2];
 
-    if ((nodo >= 'a') && (nodo <= 'z')) //convertir minusculas a mayusculas
-    {
+    if ((nodo >= 'a') && (nodo <= 'z')){ //convertimos a mayuscula
         nodo = (char)(nodo - ('a' - 'A'));
     }
-
-    if ((comando >= 'a') && (comando <= 'z'))
-    {
+    if ((comando >= 'a') && (comando <= 'z')){
         comando = (char)(comando - ('a' - 'A'));
     }
 
-    switch (nodo)
+    switch (nodo) //identificamos nodo
     {
-        case 'T':
-            destino = ID_TANQUE;
-            break;
-
-        case 'C':
-            destino = ID_CINTA;
-            break;
-
-        case 'M':
-            destino = ID_MAESTRO;
-            break;
-
-        default:
-            PC_Enviar("ERROR: NODO INVALIDO. USE T, C o M\r\n");
-            return;
-    }
-
-    switch (comando)
-    {
-        case 'P':
-            if (*parametro != '\0') //por si mandamos :P123 por ej
+        case 'M': //maestro
+            switch (comando)
             {
-                PC_Enviar("ERROR: EL COMANDO PING NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                case 'N': //estado de maestro
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :MN NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    switch (estado_maestro)
+                    {
+                        case M_INACTIVO:
+                            PC_Enviar("MAESTRO: INACTIVO\r\n");
+                            break;
 
-            Maestro_Enviar_Trama(destino, CMD_PING, PING_PARAM_H, PING_PARAM_L,
-            		(destino == ID_TANQUE) ? "TX -> TANQUE: PING\r\n" : "TX -> CINTA: PING\r\n");
-            break;
+                        case M_ACTIVO:
+                            PC_Enviar("MAESTRO: ACTIVO\r\n");
+                            break;
 
-        case 'N':
-            if (*parametro != '\0')
-            {
-                PC_Enviar("ERROR: EL COMANDO CONSULTA NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                        case M_ALARMA:
+                            PC_Enviar("MAESTRO: ALARMA\r\n");
+                            break;
 
-            if (destino == ID_TANQUE)
-            {
-                Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0, "TX -> TANQUE: PEDIR ESTADO\r\n");
-            }
-            else if (destino == ID_CINTA)
-            {
-                Maestro_Enviar_Trama(ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0, "TX -> CINTA: PEDIR ESTADO\r\n");
-            }
-            else
-            {
-            	switch (estado_maestro)
-				{
-					case M_INACTIVO:
-						PC_Enviar("MAESTRO: INACTIVO\r\n");
-						break;
+                        default:
+                            PC_Enviar(
+                                "MAESTRO: ESTADO DESCONOCIDO\r\n"
+                            );
+                            break;
+                    }
+                    break;
 
-					case M_ACTIVO:
-						PC_Enviar("MAESTRO: ACTIVO\r\n");
-						break;
+                case 'A': //activar/desactivar sistema
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor > 1))
+                    {
+                        PC_Enviar("ERROR: USE :MA0 O :MA1\r\n" ); //verificamos pametro correcto
+                        return;
+                    }
+                    if (valor == 0) { //desactivar
+                        if (estado_maestro == M_ALARMA)  {
+                            PC_Enviar("ERROR: SISTEMA EN ALARMA.\r\n");
+                            return;
+                        }
+                        inicio_dosif_automatico_pendiente = 0; //cancelar automaticos pendientes
+                        continuar_cinta_automatico_pendiente = 0;
+                        ciclo_esperando_receta = 0;
 
-					case M_ALARMA:
-						PC_Enviar("MAESTRO: ALARMA\r\n");
-						break;
+                        estado_maestro = M_INACTIVO;
+                        parada_sistema_etapa = 1; //inicia secuencia de pararda
+                        PC_Enviar("MAESTRO: SISTEMA INACTIVO\r\n");
+                    } else { //activar
+                        if (estado_maestro == M_ALARMA){
+                            PC_Enviar( "ERROR: SISTEMA EN ALARMA.\r\n");
+                            return;
+                        }
+                        estado_maestro = M_ACTIVO;
 
-					default:
-						PC_Enviar("MAESTRO: ESTADO DESCONOCIDO\r\n");
-						break;
-				}
+                        tick_polling = HAL_GetTick();//reiniciar polling
+                        nodo_polling_siguiente = ID_CINTA;
 
-				break;
+                        PC_Enviar("MAESTRO: SISTEMA ACTIVO\r\n" );
+                    }
+                    break;
 
-            }
-            break;
+                case 'R': //reset alarma maestro
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)) {
+                        PC_Enviar( "ERROR: USE :MR1\r\n" );
+                        return;
+                    }
+                    if (estado_maestro != M_ALARMA) {
+                        PC_Enviar( "MAESTRO: NO HAY ALARMA ACTIVA\r\n" );
+                        return;
+                    }
+                    parada_sistema_etapa = 0; //cancelamos secuencia de parada
+                    estado_maestro = M_INACTIVO;
 
-        case 'M':
-            if (*parametro != '\0')
-            {
-                PC_Enviar("ERROR: EL COMANDO :TM NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                    PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n"  );
+                    break;
 
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :M SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_DOSIF, 0, 0, "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
-            break;
-
-        case 'S':
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :S SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0) //se convierte a numero usando parsear
-            {
-                PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8), (uint8_t)(valor & 0xFF),
-                "TX -> TANQUE: CONFIGURAR SETPOINT\r\n");
-
-            /*15 decimal = 0x000F
-            PARAM_H = 0x00
-            PARAM_L = 0x0F*/
-
-            break;
-
-        case 'R':
-
-            if (destino == ID_MAESTRO)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
-                {
-                    PC_Enviar("ERROR: USE :MR1\r\n");
-                    return;
-                }
-
-                if (estado_maestro != M_ALARMA)
-                {
-                    PC_Enviar("MAESTRO: NO HAY ALARMA ACTIVA\r\n");
-                    return;
-                }
-
-                parada_sistema_etapa = 0;
-                estado_maestro = M_INACTIVO;
-
-                PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n");
-                break;
-            }
-
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :R NO VALIDO PARA ESTE NODO\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0)
-            {
-                PC_Enviar("ERROR: RECETA INVALIDA\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_RECETA,
-                (uint8_t)(valor >> 8),(uint8_t)(valor & 0xFF), "TX -> TANQUE: CONFIGURAR RECETA\r\n");
-        break;
-
-        case 'I':
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :I SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-            {
-                PC_Enviar("ERROR: USE :TI0 O :TI1\r\n");
-                return;
-            }
-
-            if ((valor == 1) && (estado_maestro != M_ACTIVO))
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_CONTROL_DOSIF, 0U, (uint8_t)valor,
-                (valor == 1U) ? "TX -> TANQUE: INICIAR DOSIFICACION\r\n" : "TX -> TANQUE: ABORTAR DOSIFICACION\r\n");
-
-            break;
-
-        case 'A':
-            if (destino == ID_TANQUE)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
-                {
-                    PC_Enviar("ERROR: USE :TA1\r\n");
-                    return;
-                }
-
-                Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_RESET_ALARMA, 0, 1, "TX -> TANQUE: RESETEAR ALARMA\r\n");
-            }
-            else if (destino == ID_CINTA)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-                {
-                    PC_Enviar("ERROR: USE :CA0 O :CA1\r\n");
-                    return;
-                }
-
-                if ((valor == 1) && (estado_maestro != M_ACTIVO))
-				{
-					PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-					return;
-				}
-
-                Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_ACTIVAR, 0U, (uint8_t)valor,
-                    (valor == 1U) ? "TX -> CINTA: ACTIVAR\r\n" : "TX -> CINTA: DESACTIVAR\r\n");
-            }
-            else
-            {
-            	if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-				{
-					PC_Enviar("ERROR: USE :MA0 O :MA1\r\n");
-					return;
-				}
-
-            	if (valor == 0)
-				{
-            		if (estado_maestro == M_ALARMA)
-            		{
-            			PC_Enviar("ERROR: SISTEMA EN ALARMA. CORRIJA LA CAUSA Y RESETEE EL MAESTRO\r\n");
-
-            			return;
-            		}
-
-					inicio_dosif_automatico_pendiente = 0;
-					continuar_cinta_automatico_pendiente = 0;
-					ciclo_esperando_receta = 0;
-
-					estado_maestro = M_INACTIVO;
-					parada_sistema_etapa = 1;
-
-					estado_maestro = M_INACTIVO;
-
-					PC_Enviar("MAESTRO: SISTEMA INACTIVO\r\n");
-				}
-				else
-				{
-					if (estado_maestro == M_ALARMA)
-					{
-						PC_Enviar(
-							"ERROR: SISTEMA EN ALARMA. "
-							"RESETEE LA ALARMA ANTES DE ACTIVAR\r\n"
-						);
-						return;
-					}
-
-					estado_maestro = M_ACTIVO;
-
-					tick_polling = HAL_GetTick();
-					nodo_polling_siguiente = ID_CINTA;
-
-					PC_Enviar("MAESTRO: SISTEMA ACTIVO\r\n");
-				}
+                default: //no existe comando
+                    PC_Enviar("ERROR: COMANDO INVALIDO PARA MAESTRO\r\n" );
+                    break;
             }
             break;
 
-        case 'C':
-            if (destino != ID_CINTA)
+        case 'T': // tanque
+            switch (comando)
             {
-                PC_Enviar("ERROR: :C SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
+                case 'P': //ping pong
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :TP NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PING,PING_PARAM_H,PING_PARAM_L,
+                    		"TX -> TANQUE: PING\r\n");
+                    break;
 
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CC1\r\n");
-                return;
-            }
+                case 'N': //consulta estado tanque
+                    if (*parametro != '\0'){
+                        PC_Enviar("ERROR: :TN NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0,
+                        "TX -> TANQUE: PEDIR ESTADO\r\n");
+                    break;
 
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONFIGURAR, 0U, 1U, "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
+                case 'M': //consulta estado dosificador
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :TM NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PEDIR_ESTADO_DOSIF,0,0,
+                        "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
+                    break;
+
+                case 'S': //configurar setpoint
+
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0U) {
+                        PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+                        "TX -> TANQUE: CONFIGURAR SETPOINT\r\n" );
+                    break;
+
+                case 'R': //configurar receta
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0U){
+                        PC_Enviar( "ERROR: RECETA INVALIDA\r\n");
+                        return;
+                    }
+
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_RECETA, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+                        "TX -> TANQUE: CONFIGURAR RECETA\r\n");
+                    break;
+
+                case 'I': //abortar,iniciar dosificacion
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1U)){
+                        PC_Enviar( "ERROR: USE :TI0 O :TI1\r\n");
+                        return;
+                    }
+
+                    if ((valor == 1) && (estado_maestro != M_ACTIVO)) { //inicia si M_ACTIVO
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE,CMD_TANQUE_CONTROL_DOSIF,0,(uint8_t)valor,(valor == 1)
+                            ? "TX -> TANQUE: INICIAR DOSIFICACION\r\n"
+                            : "TX -> TANQUE: ABORTAR DOSIFICACION\r\n");
+                    break;
+
+                case 'A': //resetea alarma de tanque
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)){
+                        PC_Enviar( "ERROR: USE :TA1\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,  CMD_TANQUE_RESET_ALARMA,0,1,
+                        "TX -> TANQUE: RESETEAR ALARMA\r\n"  );
+
+                    break;
+
+                default: //no existe comando
+                    PC_Enviar( "ERROR: COMANDO INVALIDO PARA TANQUE\r\n");
+                    break;
+            }
             break;
 
-        case 'T':
-            if (destino != ID_CINTA)
+        case 'C': //cinta
+            switch (comando)
             {
-                PC_Enviar("ERROR: :T SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
+                case 'P': //ping pong
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :CP NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
 
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CT1\r\n");
-                return;
-            }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PING, PING_PARAM_H, PING_PARAM_L,
+                    		"TX -> CINTA: PING\r\n");
+                    break;
 
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_TARA, 0U, 1U, "TX -> CINTA: HACER TARA\r\n");
+                case 'N': //consultar estado cinta
+                    if (*parametro != '\0'){
+                        PC_Enviar("ERROR: :CN NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0,
+                        "TX -> CINTA: PEDIR ESTADO\r\n");
+                    break;
+
+                case 'C': // :CC1 configuracion balanza
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                        PC_Enviar("ERROR: USE :CC1\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CONFIGURAR, 0, 1,
+                        "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
+                    break;
+
+                case 'T': //tara :CT1
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                        PC_Enviar("ERROR: USE :CT1\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_TARA, 0, 1,
+                        "TX -> CINTA: HACER TARA\r\n");
+                    break;
+
+                case 'F': //calibracion con peso patron
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0) {
+                        PC_Enviar("ERROR: PESO DE CALIBRACION INVALIDO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CALIBRAR,(uint8_t)(valor >> 8U),(uint8_t)(valor & 0xFFU),
+                        "TX -> CINTA: CALIBRAR HX711\r\n");
+                    break;
+
+                case 'A': // Desactivar / activar cinta
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1)){
+                        PC_Enviar("ERROR: USE :CA0 O :CA1\r\n");
+                        return;
+                    }
+                    if ((valor == 1U) &&(estado_maestro != M_ACTIVO)) {
+                    	PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_ACTIVAR, 0, (uint8_t)valor, (valor == 1)
+                            ? "TX -> CINTA: ACTIVAR\r\n"
+                            : "TX -> CINTA: DESACTIVAR\r\n");
+                    break;
+                case 'B':// :CB0 / :CB1 Detener / arrancar banda
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor > 1U)) {
+                        PC_Enviar("ERROR: USE :CB0 O :CB1\r\n" );
+                        return;
+                    }
+                    if ((valor == 1U) && (estado_maestro != M_ACTIVO))  {
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n"  );
+                        return;
+                    }
+
+                    Maestro_Enviar_Trama( ID_CINTA,  CMD_CINTA_CONTROL_BANDA, 0, (uint8_t)valor, (valor == 1)
+                            ? "TX -> CINTA: ARRANCAR BANDA\r\n"
+                            : "TX -> CINTA: DETENER BANDA\r\n");
+                    break;
+
+                case 'D': // CD1 continuar pesaje
+
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U)){ PC_Enviar(
+                            "ERROR: USE :CD1\r\n" );
+                        return;
+                    }
+                    if (estado_maestro != M_ACTIVO){
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1,
+                        "TX -> CINTA: CONTINUAR PESAJE\r\n" );
+                    break;
+
+                default: //comandos no existentes
+                    PC_Enviar("ERROR: COMANDO INVALIDO PARA CINTA\r\n"  );
+                    break;
+            }
             break;
 
-        case 'F':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :F SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0U)
-            {
-                PC_Enviar("ERROR: PESO DE CALIBRACION INVALIDO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CALIBRAR, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
-                "TX -> CINTA: CALIBRAR HX711\r\n");
-            break;
-
-        case 'B':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :B SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1))
-            {
-                PC_Enviar("ERROR: USE :CB0 o :CB1 \r\n");
-                return;
-            }
-
-            if ((valor != 0) && (estado_maestro != M_ACTIVO))
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONTROL_BANDA, 0, (uint8_t)valor, "TX -> CINTA: CONTROL DE BANDA\r\n");
-            break;
-
-        case 'D':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :D SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CD1\r\n");
-                return;
-            }
-
-            if (estado_maestro != M_ACTIVO)
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1, "TX -> CINTA: CONTINUAR PESAJE\r\n");
-            break;
-
-        default:
-            PC_Enviar("ERROR: COMANDO INVALIDO\r\n");
+        default: //nodo invalido
+            PC_Enviar("ERROR: NODO INVALIDO. USE T, C o M\r\n" );
             break;
     }
 }
-
 static void Maestro_Confirmar_Evento_Cinta(void) //confirma que el maestro recibió el evento para que la cinta no lo mande mas
 {
 	//Hay un evento de la cinta pendiente de confirmar y el maestro no está esperando la respuesta de otra solicitud.
@@ -1207,8 +1119,8 @@ static void Maestro_Procesar_RS485(void)
                         ack_evento_cinta_pendiente = 1; //confirmamos evento
                         ack_evento_cinta_secuencia =secuencia_evento;
 
-                        if ((ultima_secuencia_evento_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta)) {
-                            ultima_secuencia_evento_valida = 1; //evitamos eventos repetidos
+                        if ((ultima_secuencia_evento_cinta_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta)) {
+                            ultima_secuencia_evento_cinta_valida = 1; //evitamos eventos repetidos
                             ultima_secuencia_evento_cinta = secuencia_evento;
                             peso_evento_ciclo_actual_mostrado = 0;
 
