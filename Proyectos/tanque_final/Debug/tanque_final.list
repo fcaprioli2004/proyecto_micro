@@ -1022,7 +1022,7 @@ static void tanque_generar_evento_llenado(void)
  80007c8:	4b07      	ldr	r3, [pc, #28]	@ (80007e8 <tanque_generar_evento_llenado+0x2c>)
  80007ca:	801a      	strh	r2, [r3, #0]
 
-    if (evento_llenado_secuencia == 0) //por si se desbrda
+    if (evento_llenado_secuencia == 0) //por si se desborda
  80007cc:	4b06      	ldr	r3, [pc, #24]	@ (80007e8 <tanque_generar_evento_llenado+0x2c>)
  80007ce:	881b      	ldrh	r3, [r3, #0]
  80007d0:	2b00      	cmp	r3, #0
