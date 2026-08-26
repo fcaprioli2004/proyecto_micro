@@ -69,10 +69,11 @@ static uint32_t tick_respuesta = 0;
 static uint32_t timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
 static char mensaje_pc[160]; //buffer auxiliar para construir textos con snprintf() y mostrar por pantalla
 
+//variables manejo de eventos nodos
 static uint8_t ack_evento_cinta_pendiente = 0;
 static uint16_t ack_evento_cinta_secuencia = 0;
 static uint16_t ultima_secuencia_evento_cinta = 0;
-static uint8_t ultima_secuencia_evento_valida = 0;  //para no ejecutar dos veces la misma accion automática
+static uint8_t ultima_secuencia_evento_cinta_valida = 0;  //para no ejecutar dos veces la misma accion automática
 
 static uint8_t ack_evento_peso_cinta_pendiente = 0;
 static uint16_t ack_evento_peso_cinta_valor = 0;
@@ -92,7 +93,6 @@ static uint32_t tick_polling = 0;
 
 static uint32_t tick_supervision = 0;
 static uint8_t nodo_supervision_siguiente = ID_TANQUE;
-
 static uint8_t flag_consulta_supervision = 0;
 
 static uint8_t parada_sistema_etapa = 0; //convierte la parada global en una pequeña secuencia
@@ -109,6 +109,8 @@ static void PC_Procesar_Comando(void);
 static void Maestro_Enviar_Trama(uint8_t destino, uint8_t comando, uint8_t param_h, uint8_t param_l, const char *mensaje);
 static void Maestro_Procesar_RS485(void);
 static void Maestro_Procesar_Polling(void);
+static void Maestro_Procesar_Timeout(void);
+static uint8_t Maestro_Procesar_ACK_NACK(uint8_t origen,uint8_t comando,uint8_t param_h,uint8_t param_l);
 
 static const char *Maestro_Nombre_Comando(uint8_t comando);
 static const char *Maestro_Descripcion_Error(uint8_t codigo);
@@ -120,7 +122,6 @@ static const char *Maestro_Nombre_Subestado_Cinta(uint8_t subestado);
 
 static void Maestro_Confirmar_Evento_Cinta(void);
 static void Maestro_Confirmar_Evento_Peso_Cinta(void);
-
 static void Maestro_Confirmar_Evento_Tanque(void);
 static void Maestro_Procesar_Inicio_Dosif_Automatico(void);
 static void Maestro_Procesar_Continuacion_Cinta_Automatica(void);
@@ -214,38 +215,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
         Maestro_Procesar_RS485(); //recepcion de tramas
-
-        if ((esperando_respuesta != 0) && ((HAL_GetTick() - tick_respuesta) >= timeout_respuesta_ms)) //estoy esperando una rta y paso el tiempo?
-        {
-                uint8_t consulta_polling;  //el que fallo era una consulta automática de eventos? si = 1
-                uint8_t timeout_inicio_automatico;  // intentaba arrancar automáticamente el dosificador? si = 1
-
-                consulta_polling = ((comando_pendiente == CMD_PEDIR_EVENTO_CINTA) || (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE))
-                        ? 1: 0;
-                timeout_inicio_automatico = ((comando_pendiente == CMD_TANQUE_CONTROL_DOSIF) && (valor_pendiente == 1) &&
-                         (inicio_dosif_automatico_pendiente != 0)) ? 1 : 0;
-
-                //limpiamos los buffers
-                esperando_respuesta = 0;
-                nodo_esperado = 0;
-                comando_pendiente = 0;
-                valor_pendiente = 0;
-
-
-                timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
-
-                if (timeout_inicio_automatico == 1) //era del inicio del dosif?
-				{
-					inicio_dosif_automatico_pendiente = 0;
-					PC_Enviar("ERROR: TIMEOUT AL INICIAR AUTOMATICAMENTE " "EL DOSIFICADOR. USE :TI1\r\n");
-				}
-                else if ((consulta_polling == 0) && (flag_consulta_supervision == 0)) //NO era del polling? si era del polling no mostramos nada para no llenar la pantalla
-                {
-                    PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n");
-                }
-
-                flag_consulta_supervision = 0;
-        }
+        Maestro_Procesar_Timeout();
 
         Maestro_Procesar_Parada_Sistema();  //si hay hay que realizar una parada lo hacemos
 
@@ -497,12 +467,10 @@ static void PC_Procesar_Comando(void)
 {
     char nodo;
     char comando;
-    uint8_t destino;
-    uint16_t valor = 0;
+    uint16_t valor = 0U;
     const char *parametro;
 
-    if ((pc_cmd_buffer[0] == '\0') || (pc_cmd_buffer[1] == '\0'))
-    {
+    if ((pc_cmd_buffer[0] == '\0') ||(pc_cmd_buffer[1] == '\0')){ //VERFICAMOS MENSAJE
         PC_Enviar("ERROR: COMANDO INCOMPLETO\r\n");
         return;
     }
@@ -511,366 +479,281 @@ static void PC_Procesar_Comando(void)
     comando = pc_cmd_buffer[1];
     parametro = &pc_cmd_buffer[2];
 
-    if ((nodo >= 'a') && (nodo <= 'z')) //convertir minusculas a mayusculas
-    {
+    if ((nodo >= 'a') && (nodo <= 'z')){ //convertimos a mayuscula
         nodo = (char)(nodo - ('a' - 'A'));
     }
-
-    if ((comando >= 'a') && (comando <= 'z'))
-    {
+    if ((comando >= 'a') && (comando <= 'z')){
         comando = (char)(comando - ('a' - 'A'));
     }
 
-    switch (nodo)
+    switch (nodo) //identificamos nodo
     {
-        case 'T':
-            destino = ID_TANQUE;
-            break;
-
-        case 'C':
-            destino = ID_CINTA;
-            break;
-
-        case 'M':
-            destino = ID_MAESTRO;
-            break;
-
-        default:
-            PC_Enviar("ERROR: NODO INVALIDO. USE T, C o M\r\n");
-            return;
-    }
-
-    switch (comando)
-    {
-        case 'P':
-            if (*parametro != '\0') //por si mandamos :P123 por ej
+        case 'M': //maestro
+            switch (comando)
             {
-                PC_Enviar("ERROR: EL COMANDO PING NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                case 'N': //estado de maestro
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :MN NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    switch (estado_maestro)
+                    {
+                        case M_INACTIVO:
+                            PC_Enviar("MAESTRO: INACTIVO\r\n");
+                            break;
 
-            Maestro_Enviar_Trama(destino, CMD_PING, PING_PARAM_H, PING_PARAM_L,
-            		(destino == ID_TANQUE) ? "TX -> TANQUE: PING\r\n" : "TX -> CINTA: PING\r\n");
-            break;
+                        case M_ACTIVO:
+                            PC_Enviar("MAESTRO: ACTIVO\r\n");
+                            break;
 
-        case 'N':
-            if (*parametro != '\0')
-            {
-                PC_Enviar("ERROR: EL COMANDO CONSULTA NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                        case M_ALARMA:
+                            PC_Enviar("MAESTRO: ALARMA\r\n");
+                            break;
 
-            if (destino == ID_TANQUE)
-            {
-                Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0, "TX -> TANQUE: PEDIR ESTADO\r\n");
-            }
-            else if (destino == ID_CINTA)
-            {
-                Maestro_Enviar_Trama(ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0, "TX -> CINTA: PEDIR ESTADO\r\n");
-            }
-            else
-            {
-            	switch (estado_maestro)
-				{
-					case M_INACTIVO:
-						PC_Enviar("MAESTRO: INACTIVO\r\n");
-						break;
+                        default:
+                            PC_Enviar(
+                                "MAESTRO: ESTADO DESCONOCIDO\r\n"
+                            );
+                            break;
+                    }
+                    break;
 
-					case M_ACTIVO:
-						PC_Enviar("MAESTRO: ACTIVO\r\n");
-						break;
+                case 'A': //activar/desactivar sistema
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor > 1))
+                    {
+                        PC_Enviar("ERROR: USE :MA0 O :MA1\r\n" ); //verificamos pametro correcto
+                        return;
+                    }
+                    if (valor == 0) { //desactivar
+                        if (estado_maestro == M_ALARMA)  {
+                            PC_Enviar("ERROR: SISTEMA EN ALARMA.\r\n");
+                            return;
+                        }
+                        inicio_dosif_automatico_pendiente = 0; //cancelar automaticos pendientes
+                        continuar_cinta_automatico_pendiente = 0;
+                        ciclo_esperando_receta = 0;
 
-					case M_ALARMA:
-						PC_Enviar("MAESTRO: ALARMA\r\n");
-						break;
+                        estado_maestro = M_INACTIVO;
+                        parada_sistema_etapa = 1; //inicia secuencia de pararda
+                        PC_Enviar("MAESTRO: SISTEMA INACTIVO\r\n");
+                    } else { //activar
+                        if (estado_maestro == M_ALARMA){
+                            PC_Enviar( "ERROR: SISTEMA EN ALARMA.\r\n");
+                            return;
+                        }
+                        estado_maestro = M_ACTIVO;
 
-					default:
-						PC_Enviar("MAESTRO: ESTADO DESCONOCIDO\r\n");
-						break;
-				}
+                        tick_polling = HAL_GetTick();//reiniciar polling
+                        nodo_polling_siguiente = ID_CINTA;
 
-				break;
+                        PC_Enviar("MAESTRO: SISTEMA ACTIVO\r\n" );
+                    }
+                    break;
 
-            }
-            break;
+                case 'R': //reset alarma maestro
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)) {
+                        PC_Enviar( "ERROR: USE :MR1\r\n" );
+                        return;
+                    }
+                    if (estado_maestro != M_ALARMA) {
+                        PC_Enviar( "MAESTRO: NO HAY ALARMA ACTIVA\r\n" );
+                        return;
+                    }
+                    parada_sistema_etapa = 0; //cancelamos secuencia de parada
+                    estado_maestro = M_INACTIVO;
 
-        case 'M':
-            if (*parametro != '\0')
-            {
-                PC_Enviar("ERROR: EL COMANDO :TM NO RECIBE PARAMETROS\r\n");
-                return;
-            }
+                    PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n"  );
+                    break;
 
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :M SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_PEDIR_ESTADO_DOSIF, 0, 0, "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
-            break;
-
-        case 'S':
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :S SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0) //se convierte a numero usando parsear
-            {
-                PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8), (uint8_t)(valor & 0xFF),
-                "TX -> TANQUE: CONFIGURAR SETPOINT\r\n");
-
-            /*15 decimal = 0x000F
-            PARAM_H = 0x00
-            PARAM_L = 0x0F*/
-
-            break;
-
-        case 'R':
-
-            if (destino == ID_MAESTRO)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
-                {
-                    PC_Enviar("ERROR: USE :MR1\r\n");
-                    return;
-                }
-
-                if (estado_maestro != M_ALARMA)
-                {
-                    PC_Enviar("MAESTRO: NO HAY ALARMA ACTIVA\r\n");
-                    return;
-                }
-
-                parada_sistema_etapa = 0;
-                estado_maestro = M_INACTIVO;
-
-                PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n");
-                break;
-            }
-
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :R NO VALIDO PARA ESTE NODO\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0)
-            {
-                PC_Enviar("ERROR: RECETA INVALIDA\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_RECETA,
-                (uint8_t)(valor >> 8),(uint8_t)(valor & 0xFF), "TX -> TANQUE: CONFIGURAR RECETA\r\n");
-        break;
-
-        case 'I':
-            if (destino != ID_TANQUE)
-            {
-                PC_Enviar("ERROR: :I SOLO EXISTE PARA EL TANQUE\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-            {
-                PC_Enviar("ERROR: USE :TI0 O :TI1\r\n");
-                return;
-            }
-
-            if ((valor == 1) && (estado_maestro != M_ACTIVO))
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_CONTROL_DOSIF, 0U, (uint8_t)valor,
-                (valor == 1U) ? "TX -> TANQUE: INICIAR DOSIFICACION\r\n" : "TX -> TANQUE: ABORTAR DOSIFICACION\r\n");
-
-            break;
-
-        case 'A':
-            if (destino == ID_TANQUE)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
-                {
-                    PC_Enviar("ERROR: USE :TA1\r\n");
-                    return;
-                }
-
-                Maestro_Enviar_Trama(ID_TANQUE, CMD_TANQUE_RESET_ALARMA, 0, 1, "TX -> TANQUE: RESETEAR ALARMA\r\n");
-            }
-            else if (destino == ID_CINTA)
-            {
-                if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-                {
-                    PC_Enviar("ERROR: USE :CA0 O :CA1\r\n");
-                    return;
-                }
-
-                if ((valor == 1) && (estado_maestro != M_ACTIVO))
-				{
-					PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-					return;
-				}
-
-                Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_ACTIVAR, 0U, (uint8_t)valor,
-                    (valor == 1U) ? "TX -> CINTA: ACTIVAR\r\n" : "TX -> CINTA: DESACTIVAR\r\n");
-            }
-            else
-            {
-            	if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
-				{
-					PC_Enviar("ERROR: USE :MA0 O :MA1\r\n");
-					return;
-				}
-
-            	if (valor == 0)
-				{
-            		if (estado_maestro == M_ALARMA)
-            		{
-            			PC_Enviar("ERROR: SISTEMA EN ALARMA. CORRIJA LA CAUSA Y RESETEE EL MAESTRO\r\n");
-
-            			return;
-            		}
-
-					inicio_dosif_automatico_pendiente = 0;
-					continuar_cinta_automatico_pendiente = 0;
-					ciclo_esperando_receta = 0;
-
-					estado_maestro = M_INACTIVO;
-					parada_sistema_etapa = 1;
-
-					estado_maestro = M_INACTIVO;
-
-					PC_Enviar("MAESTRO: SISTEMA INACTIVO\r\n");
-				}
-				else
-				{
-					if (estado_maestro == M_ALARMA)
-					{
-						PC_Enviar(
-							"ERROR: SISTEMA EN ALARMA. "
-							"RESETEE LA ALARMA ANTES DE ACTIVAR\r\n"
-						);
-						return;
-					}
-
-					estado_maestro = M_ACTIVO;
-
-					tick_polling = HAL_GetTick();
-					nodo_polling_siguiente = ID_CINTA;
-
-					PC_Enviar("MAESTRO: SISTEMA ACTIVO\r\n");
-				}
+                default: //no existe comando
+                    PC_Enviar("ERROR: COMANDO INVALIDO PARA MAESTRO\r\n" );
+                    break;
             }
             break;
 
-        case 'C':
-            if (destino != ID_CINTA)
+        case 'T': // tanque
+            switch (comando)
             {
-                PC_Enviar("ERROR: :C SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
+                case 'P': //ping pong
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :TP NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PING,PING_PARAM_H,PING_PARAM_L,
+                    		"TX -> TANQUE: PING\r\n");
+                    break;
 
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CC1\r\n");
-                return;
-            }
+                case 'N': //consulta estado tanque
+                    if (*parametro != '\0'){
+                        PC_Enviar("ERROR: :TN NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0,
+                        "TX -> TANQUE: PEDIR ESTADO\r\n");
+                    break;
 
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONFIGURAR, 0U, 1U, "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
+                case 'M': //consulta estado dosificador
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :TM NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PEDIR_ESTADO_DOSIF,0,0,
+                        "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
+                    break;
+
+                case 'S': //configurar setpoint
+
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0U) {
+                        PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+                        "TX -> TANQUE: CONFIGURAR SETPOINT\r\n" );
+                    break;
+
+                case 'R': //configurar receta
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0U){
+                        PC_Enviar( "ERROR: RECETA INVALIDA\r\n");
+                        return;
+                    }
+
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_RECETA, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+                        "TX -> TANQUE: CONFIGURAR RECETA\r\n");
+                    break;
+
+                case 'I': //abortar,iniciar dosificacion
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1U)){
+                        PC_Enviar( "ERROR: USE :TI0 O :TI1\r\n");
+                        return;
+                    }
+
+                    if ((valor == 1) && (estado_maestro != M_ACTIVO)) { //inicia si M_ACTIVO
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_TANQUE,CMD_TANQUE_CONTROL_DOSIF,0,(uint8_t)valor,(valor == 1)
+                            ? "TX -> TANQUE: INICIAR DOSIFICACION\r\n"
+                            : "TX -> TANQUE: ABORTAR DOSIFICACION\r\n");
+                    break;
+
+                case 'A': //resetea alarma de tanque
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)){
+                        PC_Enviar( "ERROR: USE :TA1\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_TANQUE,  CMD_TANQUE_RESET_ALARMA,0,1,
+                        "TX -> TANQUE: RESETEAR ALARMA\r\n"  );
+
+                    break;
+
+                default: //no existe comando
+                    PC_Enviar( "ERROR: COMANDO INVALIDO PARA TANQUE\r\n");
+                    break;
+            }
             break;
 
-        case 'T':
-            if (destino != ID_CINTA)
+        case 'C': //cinta
+            switch (comando)
             {
-                PC_Enviar("ERROR: :T SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
+                case 'P': //ping pong
+                    if (*parametro != '\0') {
+                        PC_Enviar( "ERROR: :CP NO RECIBE PARAMETROS\r\n" );
+                        return;
+                    }
 
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CT1\r\n");
-                return;
-            }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PING, PING_PARAM_H, PING_PARAM_L,
+                    		"TX -> CINTA: PING\r\n");
+                    break;
 
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_TARA, 0U, 1U, "TX -> CINTA: HACER TARA\r\n");
+                case 'N': //consultar estado cinta
+                    if (*parametro != '\0'){
+                        PC_Enviar("ERROR: :CN NO RECIBE PARAMETROS\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0,
+                        "TX -> CINTA: PEDIR ESTADO\r\n");
+                    break;
+
+                case 'C': // :CC1 configuracion balanza
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                        PC_Enviar("ERROR: USE :CC1\r\n");
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CONFIGURAR, 0, 1,
+                        "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
+                    break;
+
+                case 'T': //tara :CT1
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                        PC_Enviar("ERROR: USE :CT1\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_TARA, 0, 1,
+                        "TX -> CINTA: HACER TARA\r\n");
+                    break;
+
+                case 'F': //calibracion con peso patron
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0) {
+                        PC_Enviar("ERROR: PESO DE CALIBRACION INVALIDO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CALIBRAR,(uint8_t)(valor >> 8U),(uint8_t)(valor & 0xFFU),
+                        "TX -> CINTA: CALIBRAR HX711\r\n");
+                    break;
+
+                case 'A': // Desactivar / activar cinta
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1)){
+                        PC_Enviar("ERROR: USE :CA0 O :CA1\r\n");
+                        return;
+                    }
+                    if ((valor == 1U) &&(estado_maestro != M_ACTIVO)) {
+                    	PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_ACTIVAR, 0, (uint8_t)valor, (valor == 1)
+                            ? "TX -> CINTA: ACTIVAR\r\n"
+                            : "TX -> CINTA: DESACTIVAR\r\n");
+                    break;
+                case 'B':// :CB0 / :CB1 Detener / arrancar banda
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor > 1U)) {
+                        PC_Enviar("ERROR: USE :CB0 O :CB1\r\n" );
+                        return;
+                    }
+                    if ((valor == 1U) && (estado_maestro != M_ACTIVO))  {
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n"  );
+                        return;
+                    }
+
+                    Maestro_Enviar_Trama( ID_CINTA,  CMD_CINTA_CONTROL_BANDA, 0, (uint8_t)valor, (valor == 1)
+                            ? "TX -> CINTA: ARRANCAR BANDA\r\n"
+                            : "TX -> CINTA: DETENER BANDA\r\n");
+                    break;
+
+                case 'D': // CD1 continuar pesaje
+
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U)){ PC_Enviar(
+                            "ERROR: USE :CD1\r\n" );
+                        return;
+                    }
+                    if (estado_maestro != M_ACTIVO){
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
+                        return;
+                    }
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1,
+                        "TX -> CINTA: CONTINUAR PESAJE\r\n" );
+                    break;
+
+                default: //comandos no existentes
+                    PC_Enviar("ERROR: COMANDO INVALIDO PARA CINTA\r\n"  );
+                    break;
+            }
             break;
 
-        case 'F':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :F SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if (PC_Parsear_UInt16(parametro, &valor) == 0U)
-            {
-                PC_Enviar("ERROR: PESO DE CALIBRACION INVALIDO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CALIBRAR, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
-                "TX -> CINTA: CALIBRAR HX711\r\n");
-            break;
-
-        case 'B':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :B SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1))
-            {
-                PC_Enviar("ERROR: USE :CB0 o :CB1 \r\n");
-                return;
-            }
-
-            if ((valor != 0) && (estado_maestro != M_ACTIVO))
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONTROL_BANDA, 0, (uint8_t)valor, "TX -> CINTA: CONTROL DE BANDA\r\n");
-            break;
-
-        case 'D':
-            if (destino != ID_CINTA)
-            {
-                PC_Enviar("ERROR: :D SOLO EXISTE PARA LA CINTA\r\n");
-                return;
-            }
-
-            if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U))
-            {
-                PC_Enviar("ERROR: USE :CD1\r\n");
-                return;
-            }
-
-            if (estado_maestro != M_ACTIVO)
-            {
-                PC_Enviar("ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
-                return;
-            }
-
-            Maestro_Enviar_Trama(ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1, "TX -> CINTA: CONTINUAR PESAJE\r\n");
-            break;
-
-        default:
-            PC_Enviar("ERROR: COMANDO INVALIDO\r\n");
+        default: //nodo invalido
+            PC_Enviar("ERROR: NODO INVALIDO. USE T, C o M\r\n" );
             break;
     }
 }
-
 static void Maestro_Confirmar_Evento_Cinta(void) //confirma que el maestro recibió el evento para que la cinta no lo mande mas
 {
 	//Hay un evento de la cinta pendiente de confirmar y el maestro no está esperando la respuesta de otra solicitud.
@@ -1053,10 +936,7 @@ static void Maestro_Procesar_Polling(void)
             destino = ID_CINTA;
             comando = CMD_PEDIR_ESTADO_CINTA;
         }
-    }
-
-    //polling de eventos automáticos
-    else
+    } else //polling de eventos automáticos
     {
         //se realizan solo con el sistema en activo
         if (estado_maestro != M_ACTIVO)
@@ -1131,310 +1011,356 @@ static void Maestro_Procesar_Polling(void)
     }
 }
 
-static void Maestro_Procesar_RS485(void)  //se llama constantemente en el while
+static void Maestro_Procesar_RS485(void)
 {
-    uint8_t origen;
-    uint8_t comando;
-    uint8_t param_h;
-    uint8_t param_l;
+
+    if (rs485_paquete_listo == 0U){ //verificamos recepcion paquete
+        return;
+    }
+    uint8_t origen = rs485_rx_origen;
+    uint8_t comando = rs485_rx_cmd;
+    uint8_t param_h = rs485_rx_param_h;
+    uint8_t param_l = rs485_rx_param_l;
     uint8_t respuesta_aceptada = 0;
 
-    if (rs485_paquete_listo == 0) //si no llego ningun paquete
-    {
-        return;
-    }
+    rs485_paquete_listo = 0;
 
-    //si hay algun paquete, ese flag se levanta en rs485.c
-    origen = rs485_rx_origen;
-    comando = rs485_rx_cmd;
-    param_h = rs485_rx_param_h;
-    param_l = rs485_rx_param_l;
-
-    rs485_paquete_listo = 0;  //libera para recibir mas paquetes
-
-    if (esperando_respuesta == 0)
-    {
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RX NO SOLICITADO: ORIGEN=%u CMD=0x%02X\r\n", origen, comando);
-        PC_Enviar(mensaje_pc);  //se usa snprint f para truncar el texto si se supera el tamaño limite
-        return;
-    }
-
-    if (origen != nodo_esperado)  //por ej, esperaba del tanque pero manda uno la cinta
-    {
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "RTA INESPERADA: ORIGEN=%u CMD=0x%02X\r\n", origen, comando);
+    if (esperando_respuesta == 0U) {
+        (void)snprintf( mensaje_pc,  sizeof(mensaje_pc),"RX NO SOLICITADO: ORIGEN=%u CMD=0x%02X\r\n",origen,comando );
         PC_Enviar(mensaje_pc);
         return;
     }
 
-    if ((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_EVENTO_CINTA) && (comando == CMD_EVENTO_CINTA_ESPERANDO_MAESTRO)) //hay una botella en la celda
-    {
-        uint16_t secuencia_evento;
-
-        respuesta_aceptada = 1;
-
-        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8) | param_l);
-
-        ack_evento_cinta_pendiente = 1;  //tengo que mandarle a la cinta un ACK conirmando que lo recibi, en la funcion Maestro_Confirmar_Evento_Cinta();
-        ack_evento_cinta_secuencia = secuencia_evento;  //hay que procesar este evento
-
-        if ((ultima_secuencia_evento_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta)) //evita procesar 2 veces el mismo evento
-        {
-            ultima_secuencia_evento_valida = 1;   //hay un evento valido
-            ultima_secuencia_evento_cinta = secuencia_evento;  //para detectar eventos repetidos
-
-            peso_evento_ciclo_actual_mostrado = 0;
-
-            if (estado_maestro == M_ACTIVO)
-            {
-                inicio_dosif_automatico_pendiente = 1;
-
-                PC_Enviar(
-                    "\r\n*** AVISO CINTA: OBJETO DETECTADO, "
-                    "ESPERANDO AL DOSIFICADOR ***\r\n"
-                );
-
-                PC_Enviar(
-                    "El maestro iniciara automaticamente "
-                    "el llenado.\r\n"
-                );
-            }
-        }
-    }
-
-    else if ((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_EVENTO_CINTA) && (comando == CMD_EVENTO_CINTA_PESAJE_COMPLETO))
-    {
-        uint16_t peso_decigramos;
-
-        respuesta_aceptada = 1;
-        peso_decigramos = (uint16_t)(((uint16_t)param_h << 8) | param_l);
-
-        ack_evento_peso_cinta_pendiente = 1;
-        ack_evento_peso_cinta_valor = peso_decigramos;
-
-        if (peso_evento_ciclo_actual_mostrado == 0)
-        {
-            peso_evento_ciclo_actual_mostrado = 1;
-
-            (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "\r\n*** PESAJE COMPLETADO: %u,%u g ***\r\n",
-                (unsigned int)(peso_decigramos / 10), (unsigned int)(peso_decigramos % 10));
-            PC_Enviar(mensaje_pc);
-        }
-    }
-
-    else if ((origen == ID_TANQUE) && (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE) && (comando == CMD_EVENTO_TANQUE_LLENADO_COMPLETO))
-    {
-        uint16_t secuencia_evento;
-
-        respuesta_aceptada = 1;
-        secuencia_evento = (uint16_t)(((uint16_t)param_h << 8) | param_l);
-
-        ack_evento_tanque_pendiente = 1;  //para confirmar en la funcin Maestro_Confirmar_Evento_Tanque()
-        ack_evento_tanque_secuencia = secuencia_evento;
-
-        if ((ultima_secuencia_evento_tanque_valida == 0) || (secuencia_evento != ultima_secuencia_evento_tanque))
-        {
-            ultima_secuencia_evento_tanque_valida = 1;  //para no repetir eventos
-            ultima_secuencia_evento_tanque = secuencia_evento;
-
-            if (estado_maestro == M_ACTIVO)
-            {
-                continuar_cinta_automatico_pendiente = 1;
-
-                PC_Enviar(
-                    "\r\n*** AVISO TANQUE: LLENADO COMPLETADO ***\r\n");
-
-                PC_Enviar(
-                    "El maestro ordenara automaticamente a la cinta "
-                    "continuar con el pesaje.\r\n");
-            }
-        }
-    }
-
-    else if ((comando == CMD_RESP_SIN_EVENTO) && (((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_EVENTO_CINTA)) ||
-              ((origen == ID_TANQUE) && (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE))))
-    {
-        respuesta_aceptada = 1;
-        //no hacemos nada ni mostramos nada
-    }
-
-    else if ((comando_pendiente == CMD_PING) && (comando == CMD_PONG) && (param_h == PING_PARAM_H) && (param_l == PING_PARAM_L))
-    {
-        respuesta_aceptada = 1;
-        PC_Enviar((origen == ID_TANQUE) ? "RX <- TANQUE: PONG CORRECTO\r\n" : "RX <- CINTA: PONG CORRECTO\r\n");
-    }
-    else if ((origen == ID_TANQUE) && (comando_pendiente == CMD_PEDIR_ESTADO_TANQUE) && (comando == CMD_RESP_ESTADO_TANQUE))
-    {
-        respuesta_aceptada = 1;
-
-        if (flag_consulta_supervision == 0)
-        {
-			(void)snprintf(mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", param_l, Maestro_Nombre_Alarma_Tanque(param_h));
-			PC_Enviar(mensaje_pc);
-        }
-
-        if (param_h != 0)  //si la alarma distinto de 0, se arranca la detención del sistema.
-        {
-            Maestro_Entrar_Alarma(Maestro_Nombre_Alarma_Tanque(param_h));
-        }
-    }
-    else if ((origen == ID_TANQUE) && (comando_pendiente == CMD_PEDIR_ESTADO_DOSIF) && (comando == CMD_RESP_ESTADO_DOSIF))
-    {
-        respuesta_aceptada = 1;
-
-        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "DOSIF: ESTADO=%s,BOTELLA=%s\r\n", Maestro_Nombre_Estado_Dosificador(param_h),
-        	    Maestro_Nombre_Presencia_Botella(param_l));
+    if (origen != nodo_esperado){
+        (void)snprintf( mensaje_pc,sizeof(mensaje_pc), "RTA INESPERADA: ORIGEN=%u CMD=0x%02X\r\n",origen,comando);
         PC_Enviar(mensaje_pc);
-    }
-    else if ((origen == ID_CINTA) && (comando_pendiente == CMD_PEDIR_ESTADO_CINTA) && (comando == CMD_RESP_ESTADO_CINTA))
-    {
-        respuesta_aceptada = 1;
-
-        if (flag_consulta_supervision == 0)
-        {
-			(void)snprintf(mensaje_pc, sizeof(mensaje_pc), "CINTA: ESTADO=%s,SUBESTADO=%s\r\n", Maestro_Nombre_Estado_Cinta(param_h),
-					Maestro_Nombre_Subestado_Cinta(param_l));
-			PC_Enviar(mensaje_pc);
-        }
-
-        if (param_h == 3) //estado 3 = error
-        {
-            Maestro_Entrar_Alarma("ERROR CINTA");
-        }
+        return;
     }
 
-    //procesar el ack o NACK
-    else if (((origen == ID_TANQUE) || (origen == ID_CINTA)) && ((comando == CMD_RESP_ACK) || (comando == CMD_RESP_NACK)) && (param_h == comando_pendiente)) //PARAM_H → comando al que se esta respondiendo
+    switch (origen) //identifico el nodo
     {
-        respuesta_aceptada = 1;
-
-        if (comando == CMD_RESP_ACK)
-        {
-            switch (param_h)
+        case ID_TANQUE:
+            switch (comando)
             {
-                case CMD_TANQUE_SETPOINT:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: SETPOINT=%u cm\r\n", (unsigned int)valor_pendiente);
-                    break;
+                case CMD_EVENTO_TANQUE_LLENADO_COMPLETO: //finalizo la dosificacion
+                    if (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE){
+                        uint16_t secuencia_evento;
+                        secuencia_evento = (uint16_t)( ((uint16_t)param_h << 8) |param_l);
+                        ack_evento_tanque_pendiente = 1;
+                        ack_evento_tanque_secuencia = secuencia_evento;
 
-                case CMD_TANQUE_RECETA:
+                        if ((ultima_secuencia_evento_tanque_valida == 0U) || (secuencia_evento != ultima_secuencia_evento_tanque)) {
+                            ultima_secuencia_evento_tanque_valida = 1;
+                            ultima_secuencia_evento_tanque = secuencia_evento;
 
-                    if (ciclo_esperando_receta != 0) //por si en la secuencia automática nos olvidamos de mandar la receta previamente
-                    {
-                        inicio_dosif_automatico_pendiente = 1;
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: RECETA=%u ml\r\n"
-                            "Se reintentara automaticamente el llenado " "de la botella pendiente.\r\n", (unsigned int)valor_pendiente);
-                    }
-                    else
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: RECETA=%u ml\r\n", (unsigned int)valor_pendiente);
-                    }
-                    break;
-
-                case CMD_TANQUE_CONTROL_DOSIF:
-
-                	inicio_dosif_automatico_pendiente = 0;
-                	ciclo_esperando_receta = 0;
-
-                    if (valor_pendiente == 0)
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: DOSIFICACION ABORTADA\r\n");
-                    }
-                    else if (param_l == ACK_ESPERANDO_BOTELLA)  //si no hay botella presente
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: ESPERANDO BOTELLA\r\n");
-                    }
-                    else
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: DOSIFICACION INICIADA\r\n");
+                            if (estado_maestro == M_ACTIVO) {
+                                continuar_cinta_automatico_pendiente = 1;
+                                PC_Enviar(  "\r\n*** AVISO TANQUE: ""LLENADO COMPLETADO ***\r\n");
+                                PC_Enviar( "El maestro ordenara automaticamente ""a la cinta continuar con el pesaje.\r\n" );
+                            }
+                        }
+                        respuesta_aceptada = 1U;
                     }
                     break;
 
-                case CMD_TANQUE_RESET_ALARMA:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: ALARMA RESETEADA\r\n");
-                    break;
-
-                case CMD_CINTA_CONFIGURAR:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: MODO CONFIGURACION\r\n");
-                    break;
-
-                case CMD_CINTA_TARA:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- CINTA: TARA COMPLETADA\r\n");
-                    break;
-
-                case CMD_CINTA_CALIBRAR:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: CALIBRADA CON %u g\r\n", (unsigned int)valor_pendiente);
-                    break;
-
-                case CMD_CINTA_ACTIVAR:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), (valor_pendiente == 1) ? "ACK <- CINTA: ACTIVADA\r\n" : "ACK <- CINTA: DESACTIVADA\r\n");
-                    break;
-
-                case CMD_CINTA_CONTROL_BANDA:
-                    if (valor_pendiente == 0)
-                    {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA DETENIENDOSE\r\n");
-                    } else {
-                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA ARRANCANDO\r\n");
+                case CMD_RESP_SIN_EVENTO: //no hay eventos
+                    if (comando_pendiente == CMD_PEDIR_EVENTO_TANQUE){
+                        respuesta_aceptada = 1U;
                     }
-
                     break;
 
-                case CMD_CINTA_CONTINUAR_PESAJE:
-                    (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: CONTINUAR PESAJE\r\n");
+                case CMD_PONG:
+                    if ((comando_pendiente == CMD_PING) &&(param_h == PING_PARAM_H) && (param_l == PING_PARAM_L)){
+                        PC_Enviar( "RX <- TANQUE: PONG CORRECTO\r\n" );
+                        respuesta_aceptada = 1U;
+                    }
+                    break;
+
+                case CMD_RESP_ESTADO_TANQUE: //estado tanque
+                    if (comando_pendiente ==CMD_PEDIR_ESTADO_TANQUE) {
+                        if (flag_consulta_supervision == 0) { // consulta manual
+                            (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "TANQUE: NIVEL=%u cm,ALARMA=%s\r\n", param_l, Maestro_Nombre_Alarma_Tanque(param_h));
+                            PC_Enviar(mensaje_pc);
+                        }
+                        if (param_h != 0U) // alarma
+                        {
+                            Maestro_Entrar_Alarma( Maestro_Nombre_Alarma_Tanque(param_h) );
+                        }
+                        respuesta_aceptada = 1;
+                    }
+                    break;
+
+                case CMD_RESP_ESTADO_DOSIF:
+                    if (comando_pendiente ==CMD_PEDIR_ESTADO_DOSIF){
+                        (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "DOSIF: ESTADO=%s,BOTELLA=%s\r\n",Maestro_Nombre_Estado_Dosificador(param_h),Maestro_Nombre_Presencia_Botella(param_l));
+                        PC_Enviar(mensaje_pc);
+                        respuesta_aceptada = 1;
+                    }
+                    break;
+
+                case CMD_RESP_ACK:
+                case CMD_RESP_NACK:
+                    respuesta_aceptada =Maestro_Procesar_ACK_NACK(origen,comando, param_h, param_l);
                     break;
 
                 default:
-                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- NODO %u: CMD=0x%02X CODIGO=%u\r\n", origen, param_h, param_l);  // %u = numeros
                     break;
             }
-        }
 
-        else
-        {
-            if ((origen == ID_TANQUE) && (param_h == CMD_TANQUE_CONTROL_DOSIF) && (param_l == NACK_SIN_RECETA) &&
-                (inicio_dosif_automatico_pendiente != 0))  //fue por no tener receta?
-            	//caso especial para salvar el ciclo automatico
+            break;
+
+        case ID_CINTA:
+            switch (comando)
             {
-                inicio_dosif_automatico_pendiente = 0;
-                ciclo_esperando_receta = 1;
+                case CMD_EVENTO_CINTA_ESPERANDO_MAESTRO: //botella esperando maestro
+                    if (comando_pendiente ==CMD_PEDIR_EVENTO_CINTA) {
+                        uint16_t secuencia_evento;
+                        secuencia_evento =(uint16_t)(((uint16_t)param_h << 8) | param_l);
+                        ack_evento_cinta_pendiente = 1; //confirmamos evento
+                        ack_evento_cinta_secuencia =secuencia_evento;
 
-                (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "\r\nERROR: HAY UNA BOTELLA ESPERANDO. " "CONFIGURE LA RECETA CON :TRxxx\r\n");
+                        if ((ultima_secuencia_evento_cinta_valida == 0) || (secuencia_evento != ultima_secuencia_evento_cinta)) {
+                            ultima_secuencia_evento_cinta_valida = 1; //evitamos eventos repetidos
+                            ultima_secuencia_evento_cinta = secuencia_evento;
+                            peso_evento_ciclo_actual_mostrado = 0;
+
+                            if (estado_maestro == M_ACTIVO){
+                                inicio_dosif_automatico_pendiente = 1;
+                                PC_Enviar(  "\r\n*** AVISO CINTA: " "OBJETO DETECTADO, " "ESPERANDO AL DOSIFICADOR ***\r\n"  );
+                                PC_Enviar( "El maestro iniciara automaticamente " "el llenado.\r\n" );
+                            }
+                        }
+                        respuesta_aceptada = 1;
+                    }
+
+                    break;
+
+                case CMD_EVENTO_CINTA_PESAJE_COMPLETO: // se completo el pesaje
+                    if (comando_pendiente == CMD_PEDIR_EVENTO_CINTA)  {
+                        uint16_t peso_decigramos;
+                        peso_decigramos = (uint16_t)(((uint16_t)param_h << 8) | param_l );
+                        ack_evento_peso_cinta_pendiente = 1; //confirmamos el evento
+                        ack_evento_peso_cinta_valor = peso_decigramos;
+
+                        if (peso_evento_ciclo_actual_mostrado == 0) {
+                        	peso_evento_ciclo_actual_mostrado = 1U;
+                            (void)snprintf(mensaje_pc,sizeof(mensaje_pc), "\r\n*** PESAJE COMPLETADO: " "%u,%u g ***\r\n", (unsigned int)(peso_decigramos / 10U),(unsigned int)(peso_decigramos % 10U));
+                            PC_Enviar(mensaje_pc);
+                        }
+                        respuesta_aceptada = 1;
+                    }
+                    break;
+
+                case CMD_RESP_SIN_EVENTO: //no hay eventos
+                    if (comando_pendiente ==CMD_PEDIR_EVENTO_CINTA) {
+                        respuesta_aceptada = 1;
+                    }
+                    break;
+
+                case CMD_PONG:
+                    if ((comando_pendiente == CMD_PING) &&(param_h == PING_PARAM_H) &&(param_l == PING_PARAM_L)) {
+                        PC_Enviar("RX <- CINTA: PONG CORRECTO\r\n" );
+                        respuesta_aceptada = 1;
+                    }
+                    break;
+
+                case CMD_RESP_ESTADO_CINTA:
+                    if (comando_pendiente ==CMD_PEDIR_ESTADO_CINTA){
+                        if (flag_consulta_supervision == 0){ //consulta manual
+                            (void)snprintf(  mensaje_pc, sizeof(mensaje_pc), "CINTA: ESTADO=%s,SUBESTADO=%s\r\n",
+                            		Maestro_Nombre_Estado_Cinta(param_h),  Maestro_Nombre_Subestado_Cinta(param_l) );
+                            PC_Enviar(mensaje_pc);
+                        }
+
+                        if (param_h == 3U){ //error en la cinta
+                            Maestro_Entrar_Alarma( "ERROR CINTA" );
+                        }
+                        respuesta_aceptada = 1U;
+                    }
+                    break;
+
+                case CMD_RESP_ACK:
+                case CMD_RESP_NACK:
+                    respuesta_aceptada = Maestro_Procesar_ACK_NACK(origen,comando,param_h,param_l );
+                    break;
+
+                default: //comando invalido
+                    break;
             }
-            else
-            {
-            	//fallo el inicio AUTOM del dosificador por cualquier otro motivo?
+            break;
 
-                if ((origen == ID_TANQUE) && (param_h == CMD_TANQUE_CONTROL_DOSIF) && (inicio_dosif_automatico_pendiente != 0))
-                {
-                    inicio_dosif_automatico_pendiente = 0; //cancelamos los flags de la secuencia
-                    ciclo_esperando_receta = 0;
-                }
-
-                //mostramos NACK normal para todos los NACKs usando funciones auxiliares para armar el msj
-                (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "NACK <- %s: %s,ERROR=%s\r\n", (origen == ID_TANQUE) ? "TANQUE" : "CINTA",
-                    Maestro_Nombre_Comando(param_h), Maestro_Descripcion_Error(param_l));
-            }
-        }
-
-        PC_Enviar(mensaje_pc);
+        default:// nodo invalido
+            (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "ERROR: ORIGEN RS485 INVALIDO=%u\r\n", origen );
+            PC_Enviar(mensaje_pc);
+            return;
     }
-    else
-    {
-        (void)snprintf(mensaje_pc,sizeof(mensaje_pc), "COMANDO NO ESPERADO: ORIGEN=%u CMD=0x%02X H=0x%02X L=0x%02X\r\n", origen, comando, param_h, param_l);
-        PC_Enviar(mensaje_pc);
-    }
+    if (respuesta_aceptada != 0) { //respuesta valida
+        esperando_respuesta = 0U;
+        nodo_esperado = 0U;
+        comando_pendiente = 0U;
+        valor_pendiente = 0U;
 
-    if (respuesta_aceptada != 0) //se acepto la respuesta? → borramos las memorias para volver a arrancar
-    {
-        esperando_respuesta = 0;
-        nodo_esperado = 0;
-        comando_pendiente = 0;
-        valor_pendiente = 0;
-
-        flag_consulta_supervision = 0;
+        flag_consulta_supervision = 0U;
 
         timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
+    } else { //comando no valido
+        (void)snprintf( mensaje_pc, sizeof(mensaje_pc),"COMANDO NO ESPERADO: ORIGEN=%u CMD=0x%02X H=0x%02X L=0x%02X\r\n",
+            origen,comando, param_h, param_l );
+        PC_Enviar(mensaje_pc);
     }
 }
+
+static uint8_t Maestro_Procesar_ACK_NACK(uint8_t origen,uint8_t comando,uint8_t param_h,uint8_t param_l)
+{
+
+    if ((comando != CMD_RESP_ACK) && (comando != CMD_RESP_NACK)){
+        return 0;
+    }
+
+    if (param_h != comando_pendiente){ //se verifica que se recibio el comando correcto
+        return 0;
+    }
+
+    if (comando == CMD_RESP_ACK) {
+        switch (param_h)
+        {
+            case CMD_TANQUE_SETPOINT:
+                (void)snprintf( mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: SETPOINT=%u cm\r\n",(unsigned int)valor_pendiente);
+                break;
+
+            case CMD_TANQUE_RECETA:
+                if (ciclo_esperando_receta != 0U) {
+                    inicio_dosif_automatico_pendiente = 1U;
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: RECETA=%u ml\r\n"
+                        "Se reintentara automaticamente el llenado de la botella pendiente.\r\n", (unsigned int)valor_pendiente );
+                }  else {
+                    (void)snprintf( mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: RECETA=%u ml\r\n", (unsigned int)valor_pendiente );
+                }
+                break;
+
+            case CMD_TANQUE_CONTROL_DOSIF:
+                inicio_dosif_automatico_pendiente = 0U;
+                ciclo_esperando_receta = 0U;
+
+                if (valor_pendiente == 0U){
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: DOSIFICACION ABORTADA\r\n" );
+                } else if (param_l == ACK_ESPERANDO_BOTELLA)  {
+                    (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: ESPERANDO BOTELLA\r\n");
+                } else {
+                    (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- TANQUE: DOSIFICACION INICIADA\r\n"  );
+                }
+                break;
+
+            case CMD_TANQUE_RESET_ALARMA:
+                (void)snprintf(mensaje_pc, sizeof(mensaje_pc), "ACK <- TANQUE: ALARMA RESETEADA\r\n");
+                break;
+
+            case CMD_CINTA_CONFIGURAR:
+                (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"ACK <- CINTA: MODO CONFIGURACION\r\n" );
+                break;
+
+            case CMD_CINTA_TARA:
+                (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: TARA COMPLETADA\r\n");
+                break;
+
+            case CMD_CINTA_CALIBRAR:
+                (void)snprintf(mensaje_pc,sizeof(mensaje_pc), "ACK <- CINTA: CALIBRADA CON %u g\r\n", (unsigned int)valor_pendiente);
+                break;
+
+            case CMD_CINTA_ACTIVAR:
+                (void)snprintf( mensaje_pc,sizeof(mensaje_pc),(valor_pendiente == 1U)? "ACK <- CINTA: ACTIVADA\r\n": "ACK <- CINTA: DESACTIVADA\r\n"  );
+                break;
+
+            case CMD_CINTA_CONTROL_BANDA:
+                if (valor_pendiente == 0U) {
+                	(void)snprintf(mensaje_pc,sizeof(mensaje_pc),"ACK <- CINTA: BANDA DETENIENDOSE\r\n");
+                } else {
+                    (void)snprintf( mensaje_pc, sizeof(mensaje_pc), "ACK <- CINTA: BANDA ARRANCANDO\r\n" );
+                }
+                break;
+
+            case CMD_CINTA_CONTINUAR_PESAJE:
+                (void)snprintf( mensaje_pc,sizeof(mensaje_pc),"ACK <- CINTA: CONTINUAR PESAJE\r\n" );
+                break;
+
+            default:
+                (void)snprintf( mensaje_pc,sizeof(mensaje_pc),"ACK <- NODO %u: CMD=0x%02X CODIGO=%u\r\n",origen, param_h,param_l );
+                break;
+        }
+    } else { //llego un NACK
+
+        if ((origen == ID_TANQUE) &&(param_h == CMD_TANQUE_CONTROL_DOSIF) && //no habia receta
+            (param_l == NACK_SIN_RECETA) &&(inicio_dosif_automatico_pendiente != 0))  {
+
+            inicio_dosif_automatico_pendiente = 0;
+            ciclo_esperando_receta = 1;
+            (void)snprintf(mensaje_pc, sizeof(mensaje_pc),"\r\nERROR: HAY UNA BOTELLA ESPERANDO. "
+                "CONFIGURE LA RECETA CON :TRxxx\r\n" );
+        } else { //fallo inicio de dosificacion automatico, aborto
+            if ((origen == ID_TANQUE) && (param_h == CMD_TANQUE_CONTROL_DOSIF) &&
+                (inicio_dosif_automatico_pendiente != 0U)){
+                inicio_dosif_automatico_pendiente = 0;
+                ciclo_esperando_receta = 0;
+            }
+
+            (void)snprintf(  mensaje_pc, sizeof(mensaje_pc), "NACK <- %s: %s,ERROR=%s\r\n",(origen == ID_TANQUE) ? "TANQUE" : "CINTA",
+                Maestro_Nombre_Comando(param_h), Maestro_Descripcion_Error(param_l));
+        }
+    }
+    PC_Enviar(mensaje_pc);
+    return 1;
+}
+
+static void Maestro_Procesar_Timeout(void)
+{
+    if (esperando_respuesta == 0U){
+        return;
+    }
+
+    if ((HAL_GetTick() - tick_respuesta) < timeout_respuesta_ms){
+        return;
+    }
+//hay timeout
+    if (flag_consulta_supervision != 0U){
+    	//era por polling,no hacer nada
+    } else if (parada_sistema_etapa != 0U) {
+            PC_Enviar("ERROR: TIMEOUT DURANTE LA PARADA DEL SISTEMA\r\n");
+    } else {
+        switch (comando_pendiente)
+        {
+            case CMD_PEDIR_EVENTO_CINTA: // era por polling,no hacer nada
+            case CMD_PEDIR_EVENTO_TANQUE:
+                break;
+
+            case CMD_TANQUE_CONTROL_DOSIF:
+                if (valor_pendiente == 1U){
+                    inicio_dosif_automatico_pendiente = 0U;
+                    PC_Enviar("ERROR: TIMEOUT AL INICIAR DOSIFICACION. " "REINTENTE CON :TI1\r\n");
+                } else {
+                    PC_Enviar( "ERROR: TIMEOUT AL ABORTAR DOSIFICACION. " "REINTENTE CON :TI0\r\n");
+                }
+                break;
+
+            case CMD_CINTA_CONTINUAR_PESAJE:
+                continuar_cinta_automatico_pendiente = 0U;
+                PC_Enviar( "ERROR: TIMEOUT AL CONTINUAR EL PESAJE. ""REINTENTE CON :CD1\r\n" );
+                break;
+
+            default:
+                PC_Enviar("ERROR: TIMEOUT, EL NODO NO RESPONDIO\r\n" );
+                break;
+        }
+    }
+    esperando_respuesta = 0U;
+    nodo_esperado = 0U;
+    comando_pendiente = 0U;
+    valor_pendiente = 0U;
+    flag_consulta_supervision = 0U;
+
+    timeout_respuesta_ms = RESPUESTA_TIMEOUT_MS;
+}
+
+
 
 static const char *Maestro_Nombre_Comando(uint8_t comando) //convertir números binarios del protocolo en textos
 //no controlan la máquina ni modifican la comunicación. Solo traducen códigos a texto.

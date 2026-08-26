@@ -324,7 +324,7 @@ static void tanque_generar_evento_llenado(void)
 {
     evento_llenado_secuencia++;
 
-    if (evento_llenado_secuencia == 0) //por si se desbrda
+    if (evento_llenado_secuencia == 0) //por si se desborda
     {
         evento_llenado_secuencia = 1;
     }
