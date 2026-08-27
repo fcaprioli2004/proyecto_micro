@@ -664,10 +664,6 @@ static void maquina_estados_dosificador(void)
 
     switch (estado_dosi)
     {
-		case DOSIF_ESPERANDO_INICIO:
-			detener_bomba_dosificador();
-			break;
-
         case DOSIF_ESPERANDO_BOTELLA:
             detener_bomba_dosificador();
 
@@ -676,6 +672,10 @@ static void maquina_estados_dosificador(void)
                 estado_dosi = DOSIF_LLENANDO;
                 uart_enviar_texto("OK: BOTELLA_DETECTADA, COMIENZA LLENADO\r\n"); //mensaje UART local
             }
+            break;
+
+        case DOSIF_ESPERANDO_INICIO:
+            detener_bomba_dosificador();
             break;
 
         case DOSIF_LLENANDO:

@@ -1118,7 +1118,7 @@ static void Maestro_Enviar_Trama(uint8_t destino, uint8_t comando, uint8_t param
 
 080007e0 <PC_Procesar_Comando>:
 
-static void PC_Procesar_Comando(void)
+static void PC_Procesar_Comando(void) //a
 {
  80007e0:	b580      	push	{r7, lr}
  80007e2:	b086      	sub	sp, #24
