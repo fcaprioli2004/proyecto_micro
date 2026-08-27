@@ -454,27 +454,19 @@ static void procesar_rs485_tanque(void)
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
             }
-            else if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() != 0)) //¿Existe una botella llena todavía colocada?
+            else if ((estado_dosi == DOSIF_BOTELLA_LLENA) && (Hay_Botella() == 1)) //¿Existe una botella llena todavía colocada?
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_RETIRE_BOTELLA);
             }
-            else if (evento_llenado_pendiente != 0) //hay un llenado anterior
+            else if (evento_llenado_pendiente == 1) //hay un llenado anterior
             {
                 tanque_enviar_rs485(origen, CMD_RESP_NACK, comando, NACK_OCUPADO);
             }
             else
             {
-                /* uint32_t primask = __get_PRIMASK();
-                __disable_irq();*/
-
                 pulsos_caudal = 0;
 
-                /*if (primask == 0)
-                {
-                    __enable_irq();
-                }*/
-
-                if (Hay_Botella() != 0)
+                if (Hay_Botella() == 1)
                 {
                     estado_dosi = DOSIF_LLENANDO;
                     tanque_enviar_rs485(origen, CMD_RESP_ACK, comando, ACK_OK);
@@ -524,7 +516,7 @@ static void uart_enviar_texto(const char *texto)
         return;
     }
 
-    HAL_UART_Transmit(&huart1, (uint8_t *)texto, (uint16_t)strlen(texto),100U);
+    HAL_UART_Transmit(&huart1, (uint8_t *)texto, (uint16_t)strlen(texto), 100);
 }
 
 static void uart_enviar_respuesta_valor(const char *formato, uint32_t valor1, uint32_t valor2)
@@ -675,7 +667,7 @@ static void maquina_estados_dosificador(void)
         case DOSIF_ESPERANDO_BOTELLA:
             detener_bomba_dosificador();
 
-            if (hay_botella != 0)
+            if (hay_botella == 1)
             {
                 estado_dosi = DOSIF_LLENANDO;
                 uart_enviar_texto("OK: BOTELLA_DETECTADA, COMIENZA LLENADO\r\n"); //mensaje UART local

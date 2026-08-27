@@ -4012,7 +4012,7 @@ LOAD C:/ST/STM32CubeIDE_2.1.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.mcu.exte
  .debug_str     0x00000000    0x8b57e ./Core/Src/gpio.o
                               0x83cf5 (size before relaxing)
  .debug_str     0x0008b57e    0x83f3d ./Core/Src/hc_sr04.o
- .debug_str     0x0008b57e    0x886e6 ./Core/Src/main.o
+ .debug_str     0x0008b57e    0x886e2 ./Core/Src/main.o
  .debug_str     0x0008b57e    0x83fd2 ./Core/Src/rs485.o
  .debug_str     0x0008b57e    0x83976 ./Core/Src/stm32f1xx_hal_msp.o
  .debug_str     0x0008b57e    0x84112 ./Core/Src/stm32f1xx_it.o
