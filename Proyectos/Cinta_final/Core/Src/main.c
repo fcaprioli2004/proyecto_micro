@@ -158,7 +158,7 @@ static uint16_t aviso_peso_decigramos = 0;
 
 /* USER CODE END PV */
 
-/* Private function prototypes ----------------------------------------------*/
+/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void maquina_estados(void);
