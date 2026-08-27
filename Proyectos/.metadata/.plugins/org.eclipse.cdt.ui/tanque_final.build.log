@@ -1,4 +1,4 @@
-01:38:24 **** Incremental Build of configuration Debug for project tanque_final ****
+08:45:16 **** Incremental Build of configuration Debug for project tanque_final ****
 make -j8 all 
 arm-none-eabi-gcc "../Core/Src/hc_sr04.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/hc_sr04.d" -MT"Core/Src/hc_sr04.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/hc_sr04.o"
 arm-none-eabi-gcc -o "tanque_final.elf" @"objects.list"   -mcpu=cortex-m3 -T"C:\Users\Pedro Peter\Documents\GitHub\proyecto_micro\Proyectos\tanque_final\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="tanque_final.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
@@ -6,9 +6,9 @@ Finished building target: tanque_final.elf
  
 arm-none-eabi-size  tanque_final.elf 
 arm-none-eabi-objdump -h -S tanque_final.elf  > "tanque_final.list"
-arm-none-eabi-objcopy  -O ihex tanque_final.elf  "tanque_final.hex"
    text	   data	    bss	    dec	    hex	filename
   23912	     96	   2504	  26512	   6790	tanque_final.elf
+arm-none-eabi-objcopy  -O ihex tanque_final.elf  "tanque_final.hex"
 Finished building: default.size.stdout
  
 Finished building: tanque_final.hex
@@ -16,5 +16,5 @@ Finished building: tanque_final.hex
 Finished building: tanque_final.list
  
 
-01:38:25 Build Finished. 0 errors, 0 warnings. (took 1s.607ms)
+08:45:20 Build Finished. 0 errors, 0 warnings. (took 3s.814ms)
 
