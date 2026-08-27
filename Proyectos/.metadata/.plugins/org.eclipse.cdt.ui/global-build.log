@@ -1,17 +1,17 @@
-08:45:16 **** Incremental Build of configuration Debug for project tanque_final ****
+12:42:59 **** Incremental Build of configuration Debug for project Cinta_final ****
 make -j8 all 
-arm-none-eabi-gcc "../Core/Src/hc_sr04.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/hc_sr04.d" -MT"Core/Src/hc_sr04.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/hc_sr04.o"
-arm-none-eabi-gcc -o "tanque_final.elf" @"objects.list"   -mcpu=cortex-m3 -T"C:\Users\Pedro Peter\Documents\GitHub\proyecto_micro\Proyectos\tanque_final\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="tanque_final.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
-Finished building target: tanque_final.elf
+arm-none-eabi-gcc "../Core/Src/tim.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/tim.d" -MT"Core/Src/tim.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/tim.o"
+arm-none-eabi-gcc -o "Cinta_final.elf" @"objects.list"   -mcpu=cortex-m3 -T"C:\Users\Pedro Peter\Documents\GitHub\proyecto_micro\Proyectos\Cinta_final\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Cinta_final.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+Finished building target: Cinta_final.elf
  
-arm-none-eabi-size  tanque_final.elf 
-arm-none-eabi-objdump -h -S tanque_final.elf  > "tanque_final.list"
+arm-none-eabi-size  Cinta_final.elf 
+arm-none-eabi-objdump -h -S Cinta_final.elf  > "Cinta_final.list"
+arm-none-eabi-objcopy  -O ihex Cinta_final.elf  "Cinta_final.hex"
    text	   data	    bss	    dec	    hex	filename
-  23912	     96	   2504	  26512	   6790	tanque_final.elf
-arm-none-eabi-objcopy  -O ihex tanque_final.elf  "tanque_final.hex"
+  42076	    476	   2868	  45420	   b16c	Cinta_final.elf
 Finished building: default.size.stdout
  
-Finished building: tanque_final.hex
+Finished building: Cinta_final.hex
  
-Finished building: tanque_final.list
+Finished building: Cinta_final.list
  

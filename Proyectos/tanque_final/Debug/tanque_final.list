@@ -37,15 +37,15 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  000185af  00000000  00000000  0001905d  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   00010469  00000000  00000000  0003160c  2**0
+ 17 .debug_line   0001046b  00000000  00000000  0003160c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008b528  00000000  00000000  00041a75  2**0
+ 18 .debug_str    0008b528  00000000  00000000  00041a77  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000ccf9d  2**0
+ 19 .comment      00000043  00000000  00000000  000ccf9f  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000039c8  00000000  00000000  000ccfe0  2**2
+ 20 .debug_frame  000039c8  00000000  00000000  000ccfe4  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007a  00000000  00000000  000d09a8  2**0
+ 21 .debug_line_str 0000007a  00000000  00000000  000d09ac  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2154,36 +2154,36 @@ static void maquina_estados_dosificador(void)
  8000e6c:	a201      	add	r2, pc, #4	@ (adr r2, 8000e74 <maquina_estados_dosificador+0x20>)
  8000e6e:	f852 f023 	ldr.w	pc, [r2, r3, lsl #2]
  8000e72:	bf00      	nop
- 8000e74:	08000e85 	.word	0x08000e85
- 8000e78:	08000e9d 	.word	0x08000e9d
+ 8000e74:	08000e8b 	.word	0x08000e8b
+ 8000e78:	08000e85 	.word	0x08000e85
  8000e7c:	08000ea3 	.word	0x08000ea3
  8000e80:	08000f4b 	.word	0x08000f4b
     {
+		case DOSIF_ESPERANDO_INICIO:
+			detener_bomba_dosificador();
+ 8000e84:	f000 f986 	bl	8001194 <detener_bomba_dosificador>
+			break;
+ 8000e88:	e06e      	b.n	8000f68 <maquina_estados_dosificador+0x114>
+
         case DOSIF_ESPERANDO_BOTELLA:
             detener_bomba_dosificador();
- 8000e84:	f000 f986 	bl	8001194 <detener_bomba_dosificador>
+ 8000e8a:	f000 f983 	bl	8001194 <detener_bomba_dosificador>
 
             if (hay_botella == 1)
- 8000e88:	79fb      	ldrb	r3, [r7, #7]
- 8000e8a:	2b01      	cmp	r3, #1
- 8000e8c:	d169      	bne.n	8000f62 <maquina_estados_dosificador+0x10e>
+ 8000e8e:	79fb      	ldrb	r3, [r7, #7]
+ 8000e90:	2b01      	cmp	r3, #1
+ 8000e92:	d166      	bne.n	8000f62 <maquina_estados_dosificador+0x10e>
             {
                 estado_dosi = DOSIF_LLENANDO;
- 8000e8e:	4b38      	ldr	r3, [pc, #224]	@ (8000f70 <maquina_estados_dosificador+0x11c>)
- 8000e90:	2202      	movs	r2, #2
- 8000e92:	701a      	strb	r2, [r3, #0]
+ 8000e94:	4b36      	ldr	r3, [pc, #216]	@ (8000f70 <maquina_estados_dosificador+0x11c>)
+ 8000e96:	2202      	movs	r2, #2
+ 8000e98:	701a      	strb	r2, [r3, #0]
                 uart_enviar_texto("OK: BOTELLA_DETECTADA, COMIENZA LLENADO\r\n"); //mensaje UART local
- 8000e94:	4837      	ldr	r0, [pc, #220]	@ (8000f74 <maquina_estados_dosificador+0x120>)
- 8000e96:	f7ff fea7 	bl	8000be8 <uart_enviar_texto>
+ 8000e9a:	4836      	ldr	r0, [pc, #216]	@ (8000f74 <maquina_estados_dosificador+0x120>)
+ 8000e9c:	f7ff fea4 	bl	8000be8 <uart_enviar_texto>
             }
             break;
- 8000e9a:	e062      	b.n	8000f62 <maquina_estados_dosificador+0x10e>
-
-        case DOSIF_ESPERANDO_INICIO:
-            detener_bomba_dosificador();
- 8000e9c:	f000 f97a 	bl	8001194 <detener_bomba_dosificador>
-            break;
- 8000ea0:	e062      	b.n	8000f68 <maquina_estados_dosificador+0x114>
+ 8000ea0:	e05f      	b.n	8000f62 <maquina_estados_dosificador+0x10e>
 
         case DOSIF_LLENANDO:
         {

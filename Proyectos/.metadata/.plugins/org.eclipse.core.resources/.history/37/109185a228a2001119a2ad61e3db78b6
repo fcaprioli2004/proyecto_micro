@@ -463,7 +463,7 @@ static void Maestro_Enviar_Trama(uint8_t destino, uint8_t comando, uint8_t param
     }
 }
 
-static void PC_Procesar_Comando(void) //a
+static void PC_Procesar_Comando(void)
 {
 	char nodo;
 	char comando;
