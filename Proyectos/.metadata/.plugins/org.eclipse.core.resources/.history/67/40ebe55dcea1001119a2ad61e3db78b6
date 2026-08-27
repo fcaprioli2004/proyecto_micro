@@ -19,7 +19,6 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
             //cambiamos de sentido para ahora detectar flanco de bajada
             __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_FALLING);
         }
-
         else
         {
             t_end = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
@@ -79,7 +78,6 @@ uint16_t HCSR04_Get_Distance(void)
     //Utilizamos el contador del timer que esta a 1MHz para generar el pulso de 10us
     __HAL_TIM_SET_COUNTER(&htim1, 0);
     HAL_GPIO_WritePin(Trigger_GPIO_Port, Trigger_Pin, GPIO_PIN_SET);
-
     while (__HAL_TIM_GET_COUNTER(&htim1) < 10)
     {
         //esperamos 10us por hardware

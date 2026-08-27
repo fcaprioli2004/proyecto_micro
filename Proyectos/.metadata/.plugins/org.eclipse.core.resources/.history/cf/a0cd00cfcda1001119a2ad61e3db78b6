@@ -467,7 +467,7 @@ static void PC_Procesar_Comando(void)
 {
 	char nodo;
 	char comando;
-	//uint8_t destino;
+	uint8_t destino;
 	uint16_t valor = 0;
 	const char *parametro;
 
@@ -594,7 +594,7 @@ static void PC_Procesar_Comando(void)
                         PC_Enviar( "ERROR: :TP NO RECIBE PARAMETROS\r\n" );
                         return;
                     }
-                    Maestro_Enviar_Trama(ID_TANQUE, CMD_PING, PING_PARAM_H, PING_PARAM_L, "TX -> TANQUE: PING\r\n");
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PING,PING_PARAM_H,PING_PARAM_L, "TX -> TANQUE: PING\r\n");
 
                     break;
 
@@ -765,15 +765,15 @@ static void PC_Procesar_Comando(void)
 
                     if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
                     {
-                    	PC_Enviar("ERROR: USE :CD1\r\n");
+                    	PC_Enviar"ERROR: USE :CD1\r\n");
                         return;
                     }
-                    if (estado_maestro != M_ACTIVO)
-                    {
+                    if (estado_maestro != M_ACTIVO){
                         PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
                         return;
                     }
-                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1, "TX -> CINTA: CONTINUAR PESAJE\r\n" );
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1,
+                        "TX -> CINTA: CONTINUAR PESAJE\r\n" );
                     break;
 
                 default: //comandos no existentes

@@ -467,7 +467,7 @@ static void PC_Procesar_Comando(void)
 {
 	char nodo;
 	char comando;
-	//uint8_t destino;
+	uint8_t destino;
 	uint16_t valor = 0;
 	const char *parametro;
 

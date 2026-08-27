@@ -39,13 +39,13 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  17 .debug_line   00010469  00000000  00000000  0003160c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008b57e  00000000  00000000  00041a75  2**0
+ 18 .debug_str    0008b528  00000000  00000000  00041a75  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000ccff3  2**0
+ 19 .comment      00000043  00000000  00000000  000ccf9d  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000039c8  00000000  00000000  000cd038  2**2
+ 20 .debug_frame  000039c8  00000000  00000000  000ccfe0  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007a  00000000  00000000  000d0a00  2**0
+ 21 .debug_line_str 0000007a  00000000  00000000  000d09a8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -288,10 +288,17 @@ void MX_GPIO_Init(void)
  80002a8:	10110000 	.word	0x10110000
 
 080002ac <HAL_TIM_IC_CaptureCallback>:
+static volatile uint16_t dist = 0;
+static volatile uint8_t flag_captured = 0;
+static volatile uint8_t measurement_done = 0;
+
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
  80002ac:	b580      	push	{r7, lr}
  80002ae:	b082      	sub	sp, #8
  80002b0:	af00      	add	r7, sp, #0
  80002b2:	6078      	str	r0, [r7, #4]
+    if ((htim->Instance == TIM1) && (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1))  //verificamos de que la interrupcion sea del adecuado
  80002b4:	687b      	ldr	r3, [r7, #4]
  80002b6:	681b      	ldr	r3, [r3, #0]
  80002b8:	4a38      	ldr	r2, [pc, #224]	@ (800039c <HAL_TIM_IC_CaptureCallback+0xf0>)
@@ -301,20 +308,28 @@ void MX_GPIO_Init(void)
  80002c0:	7f1b      	ldrb	r3, [r3, #28]
  80002c2:	2b01      	cmp	r3, #1
  80002c4:	d166      	bne.n	8000394 <HAL_TIM_IC_CaptureCallback+0xe8>
+    {
+        if (flag_captured == 0)  //primer flanco
  80002c6:	4b36      	ldr	r3, [pc, #216]	@ (80003a0 <HAL_TIM_IC_CaptureCallback+0xf4>)
  80002c8:	781b      	ldrb	r3, [r3, #0]
  80002ca:	b2db      	uxtb	r3, r3
  80002cc:	2b00      	cmp	r3, #0
  80002ce:	d11a      	bne.n	8000306 <HAL_TIM_IC_CaptureCallback+0x5a>
+        {
+            t_ini = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
  80002d0:	2100      	movs	r1, #0
  80002d2:	6878      	ldr	r0, [r7, #4]
  80002d4:	f003 fbce 	bl	8003a74 <HAL_TIM_ReadCapturedValue>
  80002d8:	4603      	mov	r3, r0
  80002da:	4a32      	ldr	r2, [pc, #200]	@ (80003a4 <HAL_TIM_IC_CaptureCallback+0xf8>)
  80002dc:	6013      	str	r3, [r2, #0]
+            flag_captured = 1;
  80002de:	4b30      	ldr	r3, [pc, #192]	@ (80003a0 <HAL_TIM_IC_CaptureCallback+0xf4>)
  80002e0:	2201      	movs	r2, #1
  80002e2:	701a      	strb	r2, [r3, #0]
+
+            //cambiamos de sentido para ahora detectar flanco de bajada
+            __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_FALLING);
  80002e4:	687b      	ldr	r3, [r7, #4]
  80002e6:	681b      	ldr	r3, [r3, #0]
  80002e8:	6a1a      	ldr	r2, [r3, #32]
@@ -329,19 +344,28 @@ void MX_GPIO_Init(void)
  80002fc:	681b      	ldr	r3, [r3, #0]
  80002fe:	f042 0202 	orr.w	r2, r2, #2
  8000302:	621a      	str	r2, [r3, #32]
+            flag_captured = 0;
+            __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
+            __HAL_TIM_DISABLE_IT(htim, TIM_IT_CC1);
+        }
+    }
+}
  8000304:	e046      	b.n	8000394 <HAL_TIM_IC_CaptureCallback+0xe8>
+            t_end = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
  8000306:	2100      	movs	r1, #0
  8000308:	6878      	ldr	r0, [r7, #4]
  800030a:	f003 fbb3 	bl	8003a74 <HAL_TIM_ReadCapturedValue>
  800030e:	4603      	mov	r3, r0
  8000310:	4a25      	ldr	r2, [pc, #148]	@ (80003a8 <HAL_TIM_IC_CaptureCallback+0xfc>)
  8000312:	6013      	str	r3, [r2, #0]
+            if (t_end >= t_ini)
  8000314:	4b24      	ldr	r3, [pc, #144]	@ (80003a8 <HAL_TIM_IC_CaptureCallback+0xfc>)
  8000316:	681a      	ldr	r2, [r3, #0]
  8000318:	4b22      	ldr	r3, [pc, #136]	@ (80003a4 <HAL_TIM_IC_CaptureCallback+0xf8>)
  800031a:	681b      	ldr	r3, [r3, #0]
  800031c:	429a      	cmp	r2, r3
  800031e:	d307      	bcc.n	8000330 <HAL_TIM_IC_CaptureCallback+0x84>
+                t_time = t_end - t_ini;
  8000320:	4b21      	ldr	r3, [pc, #132]	@ (80003a8 <HAL_TIM_IC_CaptureCallback+0xfc>)
  8000322:	681a      	ldr	r2, [r3, #0]
  8000324:	4b1f      	ldr	r3, [pc, #124]	@ (80003a4 <HAL_TIM_IC_CaptureCallback+0xf8>)
@@ -350,6 +374,7 @@ void MX_GPIO_Init(void)
  800032a:	4a20      	ldr	r2, [pc, #128]	@ (80003ac <HAL_TIM_IC_CaptureCallback+0x100>)
  800032c:	6013      	str	r3, [r2, #0]
  800032e:	e008      	b.n	8000342 <HAL_TIM_IC_CaptureCallback+0x96>
+                t_time = (65536UL - t_ini) + t_end;
  8000330:	4b1d      	ldr	r3, [pc, #116]	@ (80003a8 <HAL_TIM_IC_CaptureCallback+0xfc>)
  8000332:	681a      	ldr	r2, [r3, #0]
  8000334:	4b1b      	ldr	r3, [pc, #108]	@ (80003a4 <HAL_TIM_IC_CaptureCallback+0xf8>)
@@ -358,6 +383,7 @@ void MX_GPIO_Init(void)
  800033a:	f503 3380 	add.w	r3, r3, #65536	@ 0x10000
  800033e:	4a1b      	ldr	r2, [pc, #108]	@ (80003ac <HAL_TIM_IC_CaptureCallback+0x100>)
  8000340:	6013      	str	r3, [r2, #0]
+            dist = (uint16_t)((t_time * 343UL) / 20000UL);  //abajo divisimos por 2, porque es ida y vuelta el camino
  8000342:	4b1a      	ldr	r3, [pc, #104]	@ (80003ac <HAL_TIM_IC_CaptureCallback+0x100>)
  8000344:	681b      	ldr	r3, [r3, #0]
  8000346:	f240 1257 	movw	r2, #343	@ 0x157
@@ -368,12 +394,15 @@ void MX_GPIO_Init(void)
  8000356:	b29a      	uxth	r2, r3
  8000358:	4b16      	ldr	r3, [pc, #88]	@ (80003b4 <HAL_TIM_IC_CaptureCallback+0x108>)
  800035a:	801a      	strh	r2, [r3, #0]
+            measurement_done = 1;
  800035c:	4b16      	ldr	r3, [pc, #88]	@ (80003b8 <HAL_TIM_IC_CaptureCallback+0x10c>)
  800035e:	2201      	movs	r2, #1
  8000360:	701a      	strb	r2, [r3, #0]
+            flag_captured = 0;
  8000362:	4b0f      	ldr	r3, [pc, #60]	@ (80003a0 <HAL_TIM_IC_CaptureCallback+0xf4>)
  8000364:	2200      	movs	r2, #0
  8000366:	701a      	strb	r2, [r3, #0]
+            __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
  8000368:	687b      	ldr	r3, [r7, #4]
  800036a:	681b      	ldr	r3, [r3, #0]
  800036c:	6a1a      	ldr	r2, [r3, #32]
@@ -387,6 +416,7 @@ void MX_GPIO_Init(void)
  800037e:	681b      	ldr	r3, [r3, #0]
  8000380:	6a12      	ldr	r2, [r2, #32]
  8000382:	621a      	str	r2, [r3, #32]
+            __HAL_TIM_DISABLE_IT(htim, TIM_IT_CC1);
  8000384:	687b      	ldr	r3, [r7, #4]
  8000386:	681b      	ldr	r3, [r3, #0]
  8000388:	68da      	ldr	r2, [r3, #12]
@@ -394,6 +424,7 @@ void MX_GPIO_Init(void)
  800038c:	681b      	ldr	r3, [r3, #0]
  800038e:	f022 0202 	bic.w	r2, r2, #2
  8000392:	60da      	str	r2, [r3, #12]
+}
  8000394:	bf00      	nop
  8000396:	3708      	adds	r7, #8
  8000398:	46bd      	mov	sp, r7
@@ -408,21 +439,32 @@ void MX_GPIO_Init(void)
  80003b8:	2000008b 	.word	0x2000008b
 
 080003bc <HCSR04_Init>:
+
+void HCSR04_Init(void)
+{
  80003bc:	b580      	push	{r7, lr}
  80003be:	af00      	add	r7, sp, #0
+    HAL_GPIO_WritePin(Trigger_GPIO_Port, Trigger_Pin, GPIO_PIN_RESET);  //asegura inicialmente el Trigger = 0
  80003c0:	2200      	movs	r2, #0
  80003c2:	f44f 7100 	mov.w	r1, #512	@ 0x200
  80003c6:	4816      	ldr	r0, [pc, #88]	@ (8000420 <HCSR04_Init+0x64>)
  80003c8:	f002 fa5f 	bl	800288a <HAL_GPIO_WritePin>
+
+    //variables auxiliares
+    flag_captured = 0;
  80003cc:	4b15      	ldr	r3, [pc, #84]	@ (8000424 <HCSR04_Init+0x68>)
  80003ce:	2200      	movs	r2, #0
  80003d0:	701a      	strb	r2, [r3, #0]
+    measurement_done = 0;
  80003d2:	4b15      	ldr	r3, [pc, #84]	@ (8000428 <HCSR04_Init+0x6c>)
  80003d4:	2200      	movs	r2, #0
  80003d6:	701a      	strb	r2, [r3, #0]
+    dist = 0;
  80003d8:	4b14      	ldr	r3, [pc, #80]	@ (800042c <HCSR04_Init+0x70>)
  80003da:	2200      	movs	r2, #0
  80003dc:	801a      	strh	r2, [r3, #0]
+
+    __HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING); //prepara TIM1 para recibir un flanco ascendente del ECHO
  80003de:	4b14      	ldr	r3, [pc, #80]	@ (8000430 <HCSR04_Init+0x74>)
  80003e0:	681b      	ldr	r3, [r3, #0]
  80003e2:	6a1a      	ldr	r2, [r3, #32]
@@ -436,13 +478,19 @@ void MX_GPIO_Init(void)
  80003f4:	681b      	ldr	r3, [r3, #0]
  80003f6:	6a12      	ldr	r2, [r2, #32]
  80003f8:	621a      	str	r2, [r3, #32]
+
+    if (HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1) != HAL_OK)
  80003fa:	2100      	movs	r1, #0
  80003fc:	480c      	ldr	r0, [pc, #48]	@ (8000430 <HCSR04_Init+0x74>)
  80003fe:	f002 ffdf 	bl	80033c0 <HAL_TIM_IC_Start_IT>
  8000402:	4603      	mov	r3, r0
  8000404:	2b00      	cmp	r3, #0
  8000406:	d001      	beq.n	800040c <HCSR04_Init+0x50>
+    {
+        Error_Handler();
  8000408:	f001 f938 	bl	800167c <Error_Handler>
+    }
+    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_CC1);  //apagamos la interrrupción y despues la vamos a prender en el trigger
  800040c:	4b08      	ldr	r3, [pc, #32]	@ (8000430 <HCSR04_Init+0x74>)
  800040e:	681b      	ldr	r3, [r3, #0]
  8000410:	68da      	ldr	r2, [r3, #12]
@@ -450,6 +498,7 @@ void MX_GPIO_Init(void)
  8000414:	681b      	ldr	r3, [r3, #0]
  8000416:	f022 0202 	bic.w	r2, r2, #2
  800041a:	60da      	str	r2, [r3, #12]
+}
  800041c:	bf00      	nop
  800041e:	bd80      	pop	{r7, pc}
  8000420:	40010800 	.word	0x40010800
@@ -459,9 +508,16 @@ void MX_GPIO_Init(void)
  8000430:	200001bc 	.word	0x200001bc
 
 08000434 <HCSR04_Get_Distance>:
+
+uint16_t HCSR04_Get_Distance(void)
+{
  8000434:	b580      	push	{r7, lr}
  8000436:	b082      	sub	sp, #8
  8000438:	af00      	add	r7, sp, #0
+    uint32_t timeout;
+
+    //reinicia la medicion
+    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_CC1);
  800043a:	4b3e      	ldr	r3, [pc, #248]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  800043c:	681b      	ldr	r3, [r3, #0]
  800043e:	68da      	ldr	r2, [r3, #12]
@@ -469,15 +525,19 @@ void MX_GPIO_Init(void)
  8000442:	681b      	ldr	r3, [r3, #0]
  8000444:	f022 0202 	bic.w	r2, r2, #2
  8000448:	60da      	str	r2, [r3, #12]
+    flag_captured = 0;
  800044a:	4b3b      	ldr	r3, [pc, #236]	@ (8000538 <HCSR04_Get_Distance+0x104>)
  800044c:	2200      	movs	r2, #0
  800044e:	701a      	strb	r2, [r3, #0]
+    measurement_done = 0;
  8000450:	4b3a      	ldr	r3, [pc, #232]	@ (800053c <HCSR04_Get_Distance+0x108>)
  8000452:	2200      	movs	r2, #0
  8000454:	701a      	strb	r2, [r3, #0]
+    dist = 0;
  8000456:	4b3a      	ldr	r3, [pc, #232]	@ (8000540 <HCSR04_Get_Distance+0x10c>)
  8000458:	2200      	movs	r2, #0
  800045a:	801a      	strh	r2, [r3, #0]
+    __HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
  800045c:	4b35      	ldr	r3, [pc, #212]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  800045e:	681b      	ldr	r3, [r3, #0]
  8000460:	6a1a      	ldr	r2, [r3, #32]
@@ -491,32 +551,48 @@ void MX_GPIO_Init(void)
  8000472:	681b      	ldr	r3, [r3, #0]
  8000474:	6a12      	ldr	r2, [r2, #32]
  8000476:	621a      	str	r2, [r3, #32]
+
+
+    //Utilizamos el contador del timer que esta a 1MHz para generar el pulso de 10us
+    __HAL_TIM_SET_COUNTER(&htim1, 0);
  8000478:	4b2e      	ldr	r3, [pc, #184]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  800047a:	681b      	ldr	r3, [r3, #0]
  800047c:	2200      	movs	r2, #0
  800047e:	625a      	str	r2, [r3, #36]	@ 0x24
+    HAL_GPIO_WritePin(Trigger_GPIO_Port, Trigger_Pin, GPIO_PIN_SET);
  8000480:	2201      	movs	r2, #1
  8000482:	f44f 7100 	mov.w	r1, #512	@ 0x200
  8000486:	482f      	ldr	r0, [pc, #188]	@ (8000544 <HCSR04_Get_Distance+0x110>)
  8000488:	f002 f9ff 	bl	800288a <HAL_GPIO_WritePin>
+
+    while (__HAL_TIM_GET_COUNTER(&htim1) < 10)
  800048c:	bf00      	nop
  800048e:	4b29      	ldr	r3, [pc, #164]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  8000490:	681b      	ldr	r3, [r3, #0]
  8000492:	6a5b      	ldr	r3, [r3, #36]	@ 0x24
  8000494:	2b09      	cmp	r3, #9
  8000496:	d9fa      	bls.n	800048e <HCSR04_Get_Distance+0x5a>
+    {
+        //esperamos 10us por hardware
+    }
+    HAL_GPIO_WritePin(Trigger_GPIO_Port, Trigger_Pin, GPIO_PIN_RESET);
  8000498:	2200      	movs	r2, #0
  800049a:	f44f 7100 	mov.w	r1, #512	@ 0x200
  800049e:	4829      	ldr	r0, [pc, #164]	@ (8000544 <HCSR04_Get_Distance+0x110>)
  80004a0:	f002 f9f3 	bl	800288a <HAL_GPIO_WritePin>
+
+    //una vez generado el trigger ahora si podemos activar el timer para esperar el ECHO
+    __HAL_TIM_SET_COUNTER(&htim1, 0);
  80004a4:	4b23      	ldr	r3, [pc, #140]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004a6:	681b      	ldr	r3, [r3, #0]
  80004a8:	2200      	movs	r2, #0
  80004aa:	625a      	str	r2, [r3, #36]	@ 0x24
+    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_CC1);
  80004ac:	4b21      	ldr	r3, [pc, #132]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004ae:	681b      	ldr	r3, [r3, #0]
  80004b0:	f06f 0202 	mvn.w	r2, #2
  80004b4:	611a      	str	r2, [r3, #16]
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_CC1);
  80004b6:	4b1f      	ldr	r3, [pc, #124]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004b8:	681b      	ldr	r3, [r3, #0]
  80004ba:	68da      	ldr	r2, [r3, #12]
@@ -524,15 +600,23 @@ void MX_GPIO_Init(void)
  80004be:	681b      	ldr	r3, [r3, #0]
  80004c0:	f042 0202 	orr.w	r2, r2, #2
  80004c4:	60da      	str	r2, [r3, #12]
+
+    timeout = HAL_GetTick();
  80004c6:	f001 fe57 	bl	8002178 <HAL_GetTick>
  80004ca:	6078      	str	r0, [r7, #4]
+
+    while (measurement_done == 0)
  80004cc:	e026      	b.n	800051c <HCSR04_Get_Distance+0xe8>
+    {
+        if ((HAL_GetTick() - timeout) >= 40) //timeout para que no quede atrapado
  80004ce:	f001 fe53 	bl	8002178 <HAL_GetTick>
  80004d2:	4602      	mov	r2, r0
  80004d4:	687b      	ldr	r3, [r7, #4]
  80004d6:	1ad3      	subs	r3, r2, r3
  80004d8:	2b27      	cmp	r3, #39	@ 0x27
  80004da:	d91f      	bls.n	800051c <HCSR04_Get_Distance+0xe8>
+        {
+            __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_CC1);
  80004dc:	4b15      	ldr	r3, [pc, #84]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004de:	681b      	ldr	r3, [r3, #0]
  80004e0:	68da      	ldr	r2, [r3, #12]
@@ -540,13 +624,18 @@ void MX_GPIO_Init(void)
  80004e4:	681b      	ldr	r3, [r3, #0]
  80004e6:	f022 0202 	bic.w	r2, r2, #2
  80004ea:	60da      	str	r2, [r3, #12]
+            __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_CC1);
  80004ec:	4b11      	ldr	r3, [pc, #68]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004ee:	681b      	ldr	r3, [r3, #0]
  80004f0:	f06f 0202 	mvn.w	r2, #2
  80004f4:	611a      	str	r2, [r3, #16]
+
+            flag_captured = 0;
  80004f6:	4b10      	ldr	r3, [pc, #64]	@ (8000538 <HCSR04_Get_Distance+0x104>)
  80004f8:	2200      	movs	r2, #0
  80004fa:	701a      	strb	r2, [r3, #0]
+
+            __HAL_TIM_SET_CAPTUREPOLARITY(&htim1, TIM_CHANNEL_1, TIM_INPUTCHANNELPOLARITY_RISING);
  80004fc:	4b0d      	ldr	r3, [pc, #52]	@ (8000534 <HCSR04_Get_Distance+0x100>)
  80004fe:	681b      	ldr	r3, [r3, #0]
  8000500:	6a1a      	ldr	r2, [r3, #32]
@@ -560,16 +649,23 @@ void MX_GPIO_Init(void)
  8000512:	681b      	ldr	r3, [r3, #0]
  8000514:	6a12      	ldr	r2, [r2, #32]
  8000516:	621a      	str	r2, [r3, #32]
+            return 0;
  8000518:	2300      	movs	r3, #0
  800051a:	e007      	b.n	800052c <HCSR04_Get_Distance+0xf8>
+    while (measurement_done == 0)
  800051c:	4b07      	ldr	r3, [pc, #28]	@ (800053c <HCSR04_Get_Distance+0x108>)
  800051e:	781b      	ldrb	r3, [r3, #0]
  8000520:	b2db      	uxtb	r3, r3
  8000522:	2b00      	cmp	r3, #0
  8000524:	d0d3      	beq.n	80004ce <HCSR04_Get_Distance+0x9a>
+        }
+    }
+
+    return dist;
  8000526:	4b06      	ldr	r3, [pc, #24]	@ (8000540 <HCSR04_Get_Distance+0x10c>)
  8000528:	881b      	ldrh	r3, [r3, #0]
  800052a:	b29b      	uxth	r3, r3
+}
  800052c:	4618      	mov	r0, r3
  800052e:	3708      	adds	r7, #8
  8000530:	46bd      	mov	sp, r7
@@ -3381,22 +3477,37 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80016ac:	000f423f 	.word	0x000f423f
 
 080016b0 <RS485_Calculate_CRC8>:
+volatile uint8_t rs485_rx_param_h = 0;
+volatile uint8_t rs485_rx_param_l = 0;
+
+// CRC-8, polinomio 0x07, valor inicial 0x00.
+static uint8_t RS485_Calculate_CRC8(const uint8_t *datos, uint8_t longitud) //datos → apunta al primer byte de los datos
+{
  80016b0:	b480      	push	{r7}
  80016b2:	b085      	sub	sp, #20
  80016b4:	af00      	add	r7, sp, #0
  80016b6:	6078      	str	r0, [r7, #4]
  80016b8:	460b      	mov	r3, r1
  80016ba:	70fb      	strb	r3, [r7, #3]
+    uint8_t crc = 0x00;
  80016bc:	2300      	movs	r3, #0
  80016be:	73fb      	strb	r3, [r7, #15]
+
+    if (datos == NULL){
  80016c0:	687b      	ldr	r3, [r7, #4]
  80016c2:	2b00      	cmp	r3, #0
  80016c4:	d101      	bne.n	80016ca <RS485_Calculate_CRC8+0x1a>
+        return 0;
  80016c6:	2300      	movs	r3, #0
  80016c8:	e02a      	b.n	8001720 <RS485_Calculate_CRC8+0x70>
+    }
+
+    for (uint8_t i = 0; i < longitud; i++)
  80016ca:	2300      	movs	r3, #0
  80016cc:	73bb      	strb	r3, [r7, #14]
  80016ce:	e022      	b.n	8001716 <RS485_Calculate_CRC8+0x66>
+    {
+        crc ^= datos[i];  //XOR bit a bit
  80016d0:	7bbb      	ldrb	r3, [r7, #14]
  80016d2:	687a      	ldr	r2, [r7, #4]
  80016d4:	4413      	add	r3, r2
@@ -3404,12 +3515,18 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80016d8:	7bfb      	ldrb	r3, [r7, #15]
  80016da:	4053      	eors	r3, r2
  80016dc:	73fb      	strb	r3, [r7, #15]
+
+        for (uint8_t bit = 0; bit < 8; bit++)
  80016de:	2300      	movs	r3, #0
  80016e0:	737b      	strb	r3, [r7, #13]
  80016e2:	e012      	b.n	800170a <RS485_Calculate_CRC8+0x5a>
+        {
+            if ((crc & 0x80) != 0)  //0x80 = 0b10000000, para seleccionar el bit mas significativo
  80016e4:	f997 300f 	ldrsb.w	r3, [r7, #15]
  80016e8:	2b00      	cmp	r3, #0
  80016ea:	da08      	bge.n	80016fe <RS485_Calculate_CRC8+0x4e>
+            {
+                crc = (uint8_t)((crc << 1) ^ 0x07);  //0b00000111
  80016ec:	f997 300f 	ldrsb.w	r3, [r7, #15]
  80016f0:	005b      	lsls	r3, r3, #1
  80016f2:	b25b      	sxtb	r3, r3
@@ -3417,15 +3534,21 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80016f8:	b25b      	sxtb	r3, r3
  80016fa:	73fb      	strb	r3, [r7, #15]
  80016fc:	e002      	b.n	8001704 <RS485_Calculate_CRC8+0x54>
+            }
+            else
+            {
+                crc = (uint8_t)(crc << 1);
  80016fe:	7bfb      	ldrb	r3, [r7, #15]
  8001700:	005b      	lsls	r3, r3, #1
  8001702:	73fb      	strb	r3, [r7, #15]
+        for (uint8_t bit = 0; bit < 8; bit++)
  8001704:	7b7b      	ldrb	r3, [r7, #13]
  8001706:	3301      	adds	r3, #1
  8001708:	737b      	strb	r3, [r7, #13]
  800170a:	7b7b      	ldrb	r3, [r7, #13]
  800170c:	2b07      	cmp	r3, #7
  800170e:	d9e9      	bls.n	80016e4 <RS485_Calculate_CRC8+0x34>
+    for (uint8_t i = 0; i < longitud; i++)
  8001710:	7bbb      	ldrb	r3, [r7, #14]
  8001712:	3301      	adds	r3, #1
  8001714:	73bb      	strb	r3, [r7, #14]
@@ -3433,7 +3556,13 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001718:	78fb      	ldrb	r3, [r7, #3]
  800171a:	429a      	cmp	r2, r3
  800171c:	d3d8      	bcc.n	80016d0 <RS485_Calculate_CRC8+0x20>
+            }
+        }
+    }
+
+    return crc; //el valor final es el resto de ir haciendo la división entre cada byte de los datoos y 0x07
  800171e:	7bfb      	ldrb	r3, [r7, #15]
+}
  8001720:	4618      	mov	r0, r3
  8001722:	3714      	adds	r7, #20
  8001724:	46bd      	mov	sp, r7
@@ -3442,6 +3571,11 @@ __STATIC_FORCEINLINE void __disable_irq(void)
 	...
 
 0800172c <RS485_Init>:
+
+
+//inicializacion
+HAL_StatusTypeDef RS485_Init(UART_HandleTypeDef *huart, GPIO_TypeDef *ctrl_port, uint16_t ctrl_pin, uint8_t id_local)
+{
  800172c:	b580      	push	{r7, lr}
  800172e:	b084      	sub	sp, #16
  8001730:	af00      	add	r7, sp, #0
@@ -3453,6 +3587,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800173c:	80fb      	strh	r3, [r7, #6]
  800173e:	4613      	mov	r3, r2
  8001740:	717b      	strb	r3, [r7, #5]
+    if ((huart == NULL) || (ctrl_port == NULL) || (ctrl_pin == 0))
  8001742:	68fb      	ldr	r3, [r7, #12]
  8001744:	2b00      	cmp	r3, #0
  8001746:	d005      	beq.n	8001754 <RS485_Init+0x28>
@@ -3462,32 +3597,48 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800174e:	88fb      	ldrh	r3, [r7, #6]
  8001750:	2b00      	cmp	r3, #0
  8001752:	d101      	bne.n	8001758 <RS485_Init+0x2c>
+    {
+        return HAL_ERROR;
  8001754:	2301      	movs	r3, #1
  8001756:	e027      	b.n	80017a8 <RS485_Init+0x7c>
+    }
+
+    rs485_ctx.uart = huart;
  8001758:	4a15      	ldr	r2, [pc, #84]	@ (80017b0 <RS485_Init+0x84>)
  800175a:	68fb      	ldr	r3, [r7, #12]
  800175c:	6013      	str	r3, [r2, #0]
+    rs485_ctx.ctrl_port = ctrl_port;
  800175e:	4a14      	ldr	r2, [pc, #80]	@ (80017b0 <RS485_Init+0x84>)
  8001760:	68bb      	ldr	r3, [r7, #8]
  8001762:	6053      	str	r3, [r2, #4]
+    rs485_ctx.ctrl_pin = ctrl_pin;
  8001764:	4a12      	ldr	r2, [pc, #72]	@ (80017b0 <RS485_Init+0x84>)
  8001766:	88fb      	ldrh	r3, [r7, #6]
  8001768:	8113      	strh	r3, [r2, #8]
+    rs485_ctx.id_local = id_local;
  800176a:	4a11      	ldr	r2, [pc, #68]	@ (80017b0 <RS485_Init+0x84>)
  800176c:	797b      	ldrb	r3, [r7, #5]
  800176e:	7293      	strb	r3, [r2, #10]
+    rs485_ctx.inicializado = 1;
  8001770:	4b0f      	ldr	r3, [pc, #60]	@ (80017b0 <RS485_Init+0x84>)
  8001772:	2201      	movs	r2, #1
  8001774:	72da      	strb	r2, [r3, #11]
+
+    rs485_rx_index = 0;
  8001776:	4b0f      	ldr	r3, [pc, #60]	@ (80017b4 <RS485_Init+0x88>)
  8001778:	2200      	movs	r2, #0
  800177a:	701a      	strb	r2, [r3, #0]
+    rs485_recibiendo = 0;
  800177c:	4b0e      	ldr	r3, [pc, #56]	@ (80017b8 <RS485_Init+0x8c>)
  800177e:	2200      	movs	r2, #0
  8001780:	701a      	strb	r2, [r3, #0]
+    rs485_paquete_listo = 0;
  8001782:	4b0e      	ldr	r3, [pc, #56]	@ (80017bc <RS485_Init+0x90>)
  8001784:	2200      	movs	r2, #0
  8001786:	701a      	strb	r2, [r3, #0]
+
+    // DE = 0 y RE = 0, modo recepción.
+    HAL_GPIO_WritePin(rs485_ctx.ctrl_port, rs485_ctx.ctrl_pin, GPIO_PIN_RESET);
  8001788:	4b09      	ldr	r3, [pc, #36]	@ (80017b0 <RS485_Init+0x84>)
  800178a:	685b      	ldr	r3, [r3, #4]
  800178c:	4a08      	ldr	r2, [pc, #32]	@ (80017b0 <RS485_Init+0x84>)
@@ -3495,6 +3646,8 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001790:	2200      	movs	r2, #0
  8001792:	4618      	mov	r0, r3
  8001794:	f001 f879 	bl	800288a <HAL_GPIO_WritePin>
+
+    return HAL_UART_Receive_IT(rs485_ctx.uart, &rs485_rx_byte, 1); //iniciamos la interrupcion
  8001798:	4b05      	ldr	r3, [pc, #20]	@ (80017b0 <RS485_Init+0x84>)
  800179a:	681b      	ldr	r3, [r3, #0]
  800179c:	2201      	movs	r2, #1
@@ -3502,6 +3655,7 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80017a0:	4618      	mov	r0, r3
  80017a2:	f002 fe42 	bl	800442a <HAL_UART_Receive_IT>
  80017a6:	4603      	mov	r3, r0
+}
  80017a8:	4618      	mov	r0, r3
  80017aa:	3710      	adds	r7, #16
  80017ac:	46bd      	mov	sp, r7
@@ -3513,6 +3667,11 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80017c0:	200001ac 	.word	0x200001ac
 
 080017c4 <RS485_Send_Packet>:
+
+
+//funcion para transmitir 1byte
+HAL_StatusTypeDef RS485_Send_Packet(uint8_t id_destino, uint8_t comando, uint8_t param_h, uint8_t param_l)
+{
  80017c4:	b590      	push	{r4, r7, lr}
  80017c6:	b085      	sub	sp, #20
  80017c8:	af00      	add	r7, sp, #0
@@ -3528,6 +3687,10 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80017dc:	717b      	strb	r3, [r7, #5]
  80017de:	4613      	mov	r3, r2
  80017e0:	713b      	strb	r3, [r7, #4]
+    HAL_StatusTypeDef estado;
+
+    //verificación de inicialización correcta
+    if ((rs485_ctx.inicializado == 0) ||(rs485_ctx.uart == NULL) ||(rs485_ctx.ctrl_port == NULL))
  80017e2:	4b25      	ldr	r3, [pc, #148]	@ (8001878 <RS485_Send_Packet+0xb4>)
  80017e4:	7adb      	ldrb	r3, [r3, #11]
  80017e6:	2b00      	cmp	r3, #0
@@ -3540,27 +3703,39 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80017f4:	685b      	ldr	r3, [r3, #4]
  80017f6:	2b00      	cmp	r3, #0
  80017f8:	d101      	bne.n	80017fe <RS485_Send_Packet+0x3a>
+    {
+        return HAL_ERROR;
  80017fa:	2301      	movs	r3, #1
  80017fc:	e037      	b.n	800186e <RS485_Send_Packet+0xaa>
+    }
+
+    //armamos la trama
+    rs485_tx_buffer[0] = RS485_START_BYTE;
  80017fe:	4b1f      	ldr	r3, [pc, #124]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001800:	223a      	movs	r2, #58	@ 0x3a
  8001802:	701a      	strb	r2, [r3, #0]
+    rs485_tx_buffer[1] = id_destino;
  8001804:	4a1d      	ldr	r2, [pc, #116]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001806:	79fb      	ldrb	r3, [r7, #7]
  8001808:	7053      	strb	r3, [r2, #1]
+    rs485_tx_buffer[2] = rs485_ctx.id_local;
  800180a:	4b1b      	ldr	r3, [pc, #108]	@ (8001878 <RS485_Send_Packet+0xb4>)
  800180c:	7a9a      	ldrb	r2, [r3, #10]
  800180e:	4b1b      	ldr	r3, [pc, #108]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001810:	709a      	strb	r2, [r3, #2]
+    rs485_tx_buffer[3] = comando;
  8001812:	4a1a      	ldr	r2, [pc, #104]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001814:	79bb      	ldrb	r3, [r7, #6]
  8001816:	70d3      	strb	r3, [r2, #3]
+    rs485_tx_buffer[4] = param_h;
  8001818:	4a18      	ldr	r2, [pc, #96]	@ (800187c <RS485_Send_Packet+0xb8>)
  800181a:	797b      	ldrb	r3, [r7, #5]
  800181c:	7113      	strb	r3, [r2, #4]
+    rs485_tx_buffer[5] = param_l;
  800181e:	4a17      	ldr	r2, [pc, #92]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001820:	793b      	ldrb	r3, [r7, #4]
  8001822:	7153      	strb	r3, [r2, #5]
+    rs485_tx_buffer[6] = RS485_Calculate_CRC8(&rs485_tx_buffer[1], 5);
  8001824:	2105      	movs	r1, #5
  8001826:	4816      	ldr	r0, [pc, #88]	@ (8001880 <RS485_Send_Packet+0xbc>)
  8001828:	f7ff ff42 	bl	80016b0 <RS485_Calculate_CRC8>
@@ -3568,9 +3743,13 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  800182e:	461a      	mov	r2, r3
  8001830:	4b12      	ldr	r3, [pc, #72]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001832:	719a      	strb	r2, [r3, #6]
+    rs485_tx_buffer[7] = RS485_END_BYTE;
  8001834:	4b11      	ldr	r3, [pc, #68]	@ (800187c <RS485_Send_Packet+0xb8>)
  8001836:	220d      	movs	r2, #13
  8001838:	71da      	strb	r2, [r3, #7]
+
+    // DE = 1 y RE = 1 para transmitir.
+    HAL_GPIO_WritePin(rs485_ctx.ctrl_port, rs485_ctx.ctrl_pin, GPIO_PIN_SET);
  800183a:	4b0f      	ldr	r3, [pc, #60]	@ (8001878 <RS485_Send_Packet+0xb4>)
  800183c:	685b      	ldr	r3, [r3, #4]
  800183e:	4a0e      	ldr	r2, [pc, #56]	@ (8001878 <RS485_Send_Packet+0xb4>)
@@ -3578,6 +3757,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001842:	2201      	movs	r2, #1
  8001844:	4618      	mov	r0, r3
  8001846:	f001 f820 	bl	800288a <HAL_GPIO_WritePin>
+
+    // HAL_UART_Transmit bloquea hasta que termine el último byte.
+    estado = HAL_UART_Transmit(rs485_ctx.uart, rs485_tx_buffer, RS485_FRAME_SIZE, 20);  //bloqueante de 20ms
  800184a:	4b0b      	ldr	r3, [pc, #44]	@ (8001878 <RS485_Send_Packet+0xb4>)
  800184c:	6818      	ldr	r0, [r3, #0]
  800184e:	2314      	movs	r3, #20
@@ -3586,6 +3768,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001854:	f002 fd5e 	bl	8004314 <HAL_UART_Transmit>
  8001858:	4603      	mov	r3, r0
  800185a:	73fb      	strb	r3, [r7, #15]
+
+    // Volver siempre a recepción.
+    HAL_GPIO_WritePin(rs485_ctx.ctrl_port, rs485_ctx.ctrl_pin, GPIO_PIN_RESET);
  800185c:	4b06      	ldr	r3, [pc, #24]	@ (8001878 <RS485_Send_Packet+0xb4>)
  800185e:	685b      	ldr	r3, [r3, #4]
  8001860:	4a05      	ldr	r2, [pc, #20]	@ (8001878 <RS485_Send_Packet+0xb4>)
@@ -3593,7 +3778,10 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001864:	2200      	movs	r2, #0
  8001866:	4618      	mov	r0, r3
  8001868:	f001 f80f 	bl	800288a <HAL_GPIO_WritePin>
+
+    return estado;
  800186c:	7bfb      	ldrb	r3, [r7, #15]
+}
  800186e:	4618      	mov	r0, r3
  8001870:	3714      	adds	r7, #20
  8001872:	46bd      	mov	sp, r7
@@ -3604,10 +3792,15 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001880:	2000019d 	.word	0x2000019d
 
 08001884 <RS485_Rx_Callback>:
+
+//recepcion por interrupcion
+void RS485_Rx_Callback(UART_HandleTypeDef *huart)
+{
  8001884:	b580      	push	{r7, lr}
  8001886:	b084      	sub	sp, #16
  8001888:	af00      	add	r7, sp, #0
  800188a:	6078      	str	r0, [r7, #4]
+    if ((rs485_ctx.inicializado == 0) ||(huart == NULL) ||(rs485_ctx.uart == NULL) ||(huart->Instance != rs485_ctx.uart->Instance))
  800188c:	4b49      	ldr	r3, [pc, #292]	@ (80019b4 <RS485_Rx_Callback+0x130>)
  800188e:	7adb      	ldrb	r3, [r3, #11]
  8001890:	2b00      	cmp	r3, #0
@@ -3626,17 +3819,28 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80018b0:	681b      	ldr	r3, [r3, #0]
  80018b2:	429a      	cmp	r2, r3
  80018b4:	d17a      	bne.n	80019ac <RS485_Rx_Callback+0x128>
+    {
+        return;
+    }
+
+    //todavia no empieza una trama, esperamos el start
+    if (rs485_recibiendo == 0)
  80018b6:	4b40      	ldr	r3, [pc, #256]	@ (80019b8 <RS485_Rx_Callback+0x134>)
  80018b8:	781b      	ldrb	r3, [r3, #0]
  80018ba:	2b00      	cmp	r3, #0
  80018bc:	d115      	bne.n	80018ea <RS485_Rx_Callback+0x66>
+    {
+        if (rs485_rx_byte == RS485_START_BYTE) //llego el byte start
  80018be:	4b3f      	ldr	r3, [pc, #252]	@ (80019bc <RS485_Rx_Callback+0x138>)
  80018c0:	781b      	ldrb	r3, [r3, #0]
  80018c2:	2b3a      	cmp	r3, #58	@ 0x3a
  80018c4:	d16a      	bne.n	800199c <RS485_Rx_Callback+0x118>
+        {
+            rs485_rx_index = 0;
  80018c6:	4b3e      	ldr	r3, [pc, #248]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  80018c8:	2200      	movs	r2, #0
  80018ca:	701a      	strb	r2, [r3, #0]
+            rs485_rx_buffer[rs485_rx_index++] = rs485_rx_byte; //guardamos el byte de start en [0] y despuues se suma
  80018cc:	4b3c      	ldr	r3, [pc, #240]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  80018ce:	781b      	ldrb	r3, [r3, #0]
  80018d0:	1c5a      	adds	r2, r3, #1
@@ -3648,14 +3852,22 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80018dc:	7819      	ldrb	r1, [r3, #0]
  80018de:	4b39      	ldr	r3, [pc, #228]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  80018e0:	5499      	strb	r1, [r3, r2]
+            rs485_recibiendo = 1;
  80018e2:	4b35      	ldr	r3, [pc, #212]	@ (80019b8 <RS485_Rx_Callback+0x134>)
  80018e4:	2201      	movs	r2, #1
  80018e6:	701a      	strb	r2, [r3, #0]
  80018e8:	e058      	b.n	800199c <RS485_Rx_Callback+0x118>
+        }
+    }
+    else
+    { //recibiendo trama
+        if (rs485_rx_index < RS485_FRAME_SIZE)
  80018ea:	4b35      	ldr	r3, [pc, #212]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  80018ec:	781b      	ldrb	r3, [r3, #0]
  80018ee:	2b07      	cmp	r3, #7
  80018f0:	d80b      	bhi.n	800190a <RS485_Rx_Callback+0x86>
+        {
+            rs485_rx_buffer[rs485_rx_index++] = rs485_rx_byte;//guardamos el byte en la posición que diga el indice
  80018f2:	4b33      	ldr	r3, [pc, #204]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  80018f4:	781b      	ldrb	r3, [r3, #0]
  80018f6:	1c5a      	adds	r2, r3, #1
@@ -3668,22 +3880,38 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001904:	4b2f      	ldr	r3, [pc, #188]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001906:	5499      	strb	r1, [r3, r2]
  8001908:	e005      	b.n	8001916 <RS485_Rx_Callback+0x92>
+        }
+        else
+        { //se desbordo el buffer, reseteamos ya que no es valido la trama
+            rs485_rx_index = 0;
  800190a:	4b2d      	ldr	r3, [pc, #180]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  800190c:	2200      	movs	r2, #0
  800190e:	701a      	strb	r2, [r3, #0]
+            rs485_recibiendo = 0;
  8001910:	4b29      	ldr	r3, [pc, #164]	@ (80019b8 <RS485_Rx_Callback+0x134>)
  8001912:	2200      	movs	r2, #0
  8001914:	701a      	strb	r2, [r3, #0]
+        }
+
+        if (rs485_rx_index >= RS485_FRAME_SIZE) //estamos en el ultimo byte, porque se guarda y luego se aumenta
  8001916:	4b2a      	ldr	r3, [pc, #168]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  8001918:	781b      	ldrb	r3, [r3, #0]
  800191a:	2b07      	cmp	r3, #7
  800191c:	d93e      	bls.n	800199c <RS485_Rx_Callback+0x118>
+        {
+            uint8_t crc_calculado;
+            uint8_t destino;
+
+            rs485_rx_index = 0;
  800191e:	4b28      	ldr	r3, [pc, #160]	@ (80019c0 <RS485_Rx_Callback+0x13c>)
  8001920:	2200      	movs	r2, #0
  8001922:	701a      	strb	r2, [r3, #0]
+            rs485_recibiendo = 0;
  8001924:	4b24      	ldr	r3, [pc, #144]	@ (80019b8 <RS485_Rx_Callback+0x134>)
  8001926:	2200      	movs	r2, #0
  8001928:	701a      	strb	r2, [r3, #0]
+
+            if ((rs485_rx_buffer[0] == RS485_START_BYTE) && (rs485_rx_buffer[7] == RS485_END_BYTE))
  800192a:	4b26      	ldr	r3, [pc, #152]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  800192c:	781b      	ldrb	r3, [r3, #0]
  800192e:	2b3a      	cmp	r3, #58	@ 0x3a
@@ -3692,19 +3920,27 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001934:	79db      	ldrb	r3, [r3, #7]
  8001936:	2b0d      	cmp	r3, #13
  8001938:	d130      	bne.n	800199c <RS485_Rx_Callback+0x118>
+            {
+                crc_calculado = RS485_Calculate_CRC8(&rs485_rx_buffer[1], 5);
  800193a:	2105      	movs	r1, #5
  800193c:	4822      	ldr	r0, [pc, #136]	@ (80019c8 <RS485_Rx_Callback+0x144>)
  800193e:	f7ff feb7 	bl	80016b0 <RS485_Calculate_CRC8>
  8001942:	4603      	mov	r3, r0
  8001944:	73fb      	strb	r3, [r7, #15]
+
+                if (crc_calculado == rs485_rx_buffer[6]) //si coinciden los CRC
  8001946:	4b1f      	ldr	r3, [pc, #124]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001948:	799b      	ldrb	r3, [r3, #6]
  800194a:	7bfa      	ldrb	r2, [r7, #15]
  800194c:	429a      	cmp	r2, r3
  800194e:	d125      	bne.n	800199c <RS485_Rx_Callback+0x118>
+                {
+                    destino = rs485_rx_buffer[1];  //hacia donde habia sido enviado, es decir, a nosotros
  8001950:	4b1c      	ldr	r3, [pc, #112]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001952:	785b      	ldrb	r3, [r3, #1]
  8001954:	73bb      	strb	r3, [r7, #14]
+
+                    if ((destino == rs485_ctx.id_local) || (destino == ID_BROADCAST)) //revisamos que el paquete sea para este nodo
  8001956:	4b17      	ldr	r3, [pc, #92]	@ (80019b4 <RS485_Rx_Callback+0x130>)
  8001958:	7a9b      	ldrb	r3, [r3, #10]
  800195a:	7bba      	ldrb	r2, [r7, #14]
@@ -3713,33 +3949,49 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001960:	7bbb      	ldrb	r3, [r7, #14]
  8001962:	2bff      	cmp	r3, #255	@ 0xff
  8001964:	d11a      	bne.n	800199c <RS485_Rx_Callback+0x118>
+                    {
+                        if (rs485_paquete_listo == 0) //evitamos sobreescribir un paquete no procesado
  8001966:	4b19      	ldr	r3, [pc, #100]	@ (80019cc <RS485_Rx_Callback+0x148>)
  8001968:	781b      	ldrb	r3, [r3, #0]
  800196a:	b2db      	uxtb	r3, r3
  800196c:	2b00      	cmp	r3, #0
  800196e:	d115      	bne.n	800199c <RS485_Rx_Callback+0x118>
+                        {
+                            rs485_rx_destino = destino;   //hacia donde habia sido enviado, es decir, a nosotros
  8001970:	4a17      	ldr	r2, [pc, #92]	@ (80019d0 <RS485_Rx_Callback+0x14c>)
  8001972:	7bbb      	ldrb	r3, [r7, #14]
  8001974:	7013      	strb	r3, [r2, #0]
+                            rs485_rx_origen = rs485_rx_buffer[2];
  8001976:	4b13      	ldr	r3, [pc, #76]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001978:	789a      	ldrb	r2, [r3, #2]
  800197a:	4b16      	ldr	r3, [pc, #88]	@ (80019d4 <RS485_Rx_Callback+0x150>)
  800197c:	701a      	strb	r2, [r3, #0]
+                            rs485_rx_cmd = rs485_rx_buffer[3];
  800197e:	4b11      	ldr	r3, [pc, #68]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001980:	78da      	ldrb	r2, [r3, #3]
  8001982:	4b15      	ldr	r3, [pc, #84]	@ (80019d8 <RS485_Rx_Callback+0x154>)
  8001984:	701a      	strb	r2, [r3, #0]
+                            rs485_rx_param_h = rs485_rx_buffer[4];
  8001986:	4b0f      	ldr	r3, [pc, #60]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001988:	791a      	ldrb	r2, [r3, #4]
  800198a:	4b14      	ldr	r3, [pc, #80]	@ (80019dc <RS485_Rx_Callback+0x158>)
  800198c:	701a      	strb	r2, [r3, #0]
+                            rs485_rx_param_l = rs485_rx_buffer[5];
  800198e:	4b0d      	ldr	r3, [pc, #52]	@ (80019c4 <RS485_Rx_Callback+0x140>)
  8001990:	795a      	ldrb	r2, [r3, #5]
  8001992:	4b13      	ldr	r3, [pc, #76]	@ (80019e0 <RS485_Rx_Callback+0x15c>)
  8001994:	701a      	strb	r2, [r3, #0]
+
+                            rs485_paquete_listo = 1;  //se levanta el flag luego de todas las comprobaciones
  8001996:	4b0d      	ldr	r3, [pc, #52]	@ (80019cc <RS485_Rx_Callback+0x148>)
  8001998:	2201      	movs	r2, #1
  800199a:	701a      	strb	r2, [r3, #0]
+                }
+            }
+        }
+    }
+    //habilitamos para el prox byte
+    HAL_UART_Receive_IT( rs485_ctx.uart, &rs485_rx_byte, 1);
  800199c:	4b05      	ldr	r3, [pc, #20]	@ (80019b4 <RS485_Rx_Callback+0x130>)
  800199e:	681b      	ldr	r3, [r3, #0]
  80019a0:	2201      	movs	r2, #1
@@ -3747,7 +3999,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80019a4:	4618      	mov	r0, r3
  80019a6:	f002 fd40 	bl	800442a <HAL_UART_Receive_IT>
  80019aa:	e000      	b.n	80019ae <RS485_Rx_Callback+0x12a>
+        return;
  80019ac:	bf00      	nop
+}
  80019ae:	3710      	adds	r7, #16
  80019b0:	46bd      	mov	sp, r7
  80019b2:	bd80      	pop	{r7, pc}
@@ -3765,10 +4019,16 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  80019e0:	200001b4 	.word	0x200001b4
 
 080019e4 <RS485_Error_Callback>:
+
+
+void RS485_Error_Callback(UART_HandleTypeDef *huart)
+{
  80019e4:	b580      	push	{r7, lr}
  80019e6:	b084      	sub	sp, #16
  80019e8:	af00      	add	r7, sp, #0
  80019ea:	6078      	str	r0, [r7, #4]
+    //comprobamos que sea esta UART
+	if ((rs485_ctx.inicializado == 0) || (huart == NULL) || (rs485_ctx.uart == NULL) || (huart->Instance != rs485_ctx.uart->Instance))
  80019ec:	4b1c      	ldr	r3, [pc, #112]	@ (8001a60 <RS485_Error_Callback+0x7c>)
  80019ee:	7adb      	ldrb	r3, [r3, #11]
  80019f0:	2b00      	cmp	r3, #0
@@ -3787,12 +4047,20 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001a0a:	681b      	ldr	r3, [r3, #0]
  8001a0c:	429a      	cmp	r2, r3
  8001a0e:	d123      	bne.n	8001a58 <RS485_Error_Callback+0x74>
+    {
+        return;
+    }
+
+    rs485_rx_index = 0;
  8001a10:	4b14      	ldr	r3, [pc, #80]	@ (8001a64 <RS485_Error_Callback+0x80>)
  8001a12:	2200      	movs	r2, #0
  8001a14:	701a      	strb	r2, [r3, #0]
+    rs485_recibiendo = 0;
  8001a16:	4b14      	ldr	r3, [pc, #80]	@ (8001a68 <RS485_Error_Callback+0x84>)
  8001a18:	2200      	movs	r2, #0
  8001a1a:	701a      	strb	r2, [r3, #0]
+
+    __HAL_UART_CLEAR_OREFLAG(huart); //limpia error de overrun para recuperar la UART
  8001a1c:	2300      	movs	r3, #0
  8001a1e:	60fb      	str	r3, [r7, #12]
  8001a20:	687b      	ldr	r3, [r7, #4]
@@ -3804,15 +4072,22 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001a2c:	685b      	ldr	r3, [r3, #4]
  8001a2e:	60fb      	str	r3, [r7, #12]
  8001a30:	68fb      	ldr	r3, [r7, #12]
+
+    /* Recuperar la máquina de estados HAL para volver a escuchar. */
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
  8001a32:	687b      	ldr	r3, [r7, #4]
  8001a34:	2200      	movs	r2, #0
  8001a36:	645a      	str	r2, [r3, #68]	@ 0x44
+    huart->RxState = HAL_UART_STATE_READY;
  8001a38:	687b      	ldr	r3, [r7, #4]
  8001a3a:	2220      	movs	r2, #32
  8001a3c:	f883 2042 	strb.w	r2, [r3, #66]	@ 0x42
+    __HAL_UNLOCK(huart);
  8001a40:	687b      	ldr	r3, [r7, #4]
  8001a42:	2200      	movs	r2, #0
  8001a44:	f883 2040 	strb.w	r2, [r3, #64]	@ 0x40
+
+    (void)HAL_UART_Receive_IT(rs485_ctx.uart,&rs485_rx_byte,1U);
  8001a48:	4b05      	ldr	r3, [pc, #20]	@ (8001a60 <RS485_Error_Callback+0x7c>)
  8001a4a:	681b      	ldr	r3, [r3, #0]
  8001a4c:	2201      	movs	r2, #1
@@ -3820,7 +4095,9 @@ __STATIC_FORCEINLINE void __disable_irq(void)
  8001a50:	4618      	mov	r0, r3
  8001a52:	f002 fcea 	bl	800442a <HAL_UART_Receive_IT>
  8001a56:	e000      	b.n	8001a5a <RS485_Error_Callback+0x76>
+        return;
  8001a58:	bf00      	nop
+}
  8001a5a:	3710      	adds	r7, #16
  8001a5c:	46bd      	mov	sp, r7
  8001a5e:	bd80      	pop	{r7, pc}

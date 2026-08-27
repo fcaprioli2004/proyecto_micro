@@ -37,15 +37,15 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00017418  00000000  00000000  00013061  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0000a8e1  00000000  00000000  0002a479  2**0
+ 17 .debug_line   0000a8dd  00000000  00000000  0002a479  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00082fd3  00000000  00000000  00034d5a  2**0
+ 18 .debug_str    00082fd3  00000000  00000000  00034d56  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000b7d2d  2**0
+ 19 .comment      00000043  00000000  00000000  000b7d29  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000021c4  00000000  00000000  000b7d70  2**2
+ 20 .debug_frame  000021c4  00000000  00000000  000b7d6c  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007b  00000000  00000000  000b9f34  2**0
+ 21 .debug_line_str 0000007b  00000000  00000000  000b9f30  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -1123,14 +1123,15 @@ static void PC_Procesar_Comando(void)
  80007e0:	b580      	push	{r7, lr}
  80007e2:	b086      	sub	sp, #24
  80007e4:	af02      	add	r7, sp, #8
-    char nodo;
-    char comando;
-    uint16_t valor = 0U;
+	char nodo;
+	char comando;
+	//uint8_t destino;
+	uint16_t valor = 0;
  80007e6:	2300      	movs	r3, #0
  80007e8:	80fb      	strh	r3, [r7, #6]
-    const char *parametro;
+	const char *parametro;
 
-    if ((pc_cmd_buffer[0] == '\0') ||(pc_cmd_buffer[1] == '\0')){ //VERFICAMOS MENSAJE
+	if ((pc_cmd_buffer[0] == '\0') || (pc_cmd_buffer[1] == '\0'))
  80007ea:	4ba9      	ldr	r3, [pc, #676]	@ (8000a90 <PC_Procesar_Comando+0x2b0>)
  80007ec:	781b      	ldrb	r3, [r3, #0]
  80007ee:	2b00      	cmp	r3, #0
@@ -1139,49 +1140,53 @@ static void PC_Procesar_Comando(void)
  80007f4:	785b      	ldrb	r3, [r3, #1]
  80007f6:	2b00      	cmp	r3, #0
  80007f8:	d103      	bne.n	8000802 <PC_Procesar_Comando+0x22>
-        PC_Enviar("ERROR: COMANDO INCOMPLETO\r\n");
+	{
+		PC_Enviar("ERROR: COMANDO INCOMPLETO\r\n");
  80007fa:	48a6      	ldr	r0, [pc, #664]	@ (8000a94 <PC_Procesar_Comando+0x2b4>)
  80007fc:	f7ff fe42 	bl	8000484 <PC_Enviar>
-        return;
+		return;
  8000800:	e326      	b.n	8000e50 <PC_Procesar_Comando+0x670>
-    }
+	}
 
-    nodo = pc_cmd_buffer[0];
+	nodo = pc_cmd_buffer[0];
  8000802:	4ba3      	ldr	r3, [pc, #652]	@ (8000a90 <PC_Procesar_Comando+0x2b0>)
  8000804:	781b      	ldrb	r3, [r3, #0]
  8000806:	73fb      	strb	r3, [r7, #15]
-    comando = pc_cmd_buffer[1];
+	comando = pc_cmd_buffer[1];
  8000808:	4ba1      	ldr	r3, [pc, #644]	@ (8000a90 <PC_Procesar_Comando+0x2b0>)
  800080a:	785b      	ldrb	r3, [r3, #1]
  800080c:	73bb      	strb	r3, [r7, #14]
-    parametro = &pc_cmd_buffer[2];
+	parametro = &pc_cmd_buffer[2];
  800080e:	4ba2      	ldr	r3, [pc, #648]	@ (8000a98 <PC_Procesar_Comando+0x2b8>)
  8000810:	60bb      	str	r3, [r7, #8]
 
-    if ((nodo >= 'a') && (nodo <= 'z')){ //convertimos a mayuscula
+	if ((nodo >= 'a') && (nodo <= 'z')) //convertir minusculas a mayusculas
  8000812:	7bfb      	ldrb	r3, [r7, #15]
  8000814:	2b60      	cmp	r3, #96	@ 0x60
  8000816:	d905      	bls.n	8000824 <PC_Procesar_Comando+0x44>
  8000818:	7bfb      	ldrb	r3, [r7, #15]
  800081a:	2b7a      	cmp	r3, #122	@ 0x7a
  800081c:	d802      	bhi.n	8000824 <PC_Procesar_Comando+0x44>
-        nodo = (char)(nodo - ('a' - 'A'));
+	{
+		nodo = (char)(nodo - ('a' - 'A'));
  800081e:	7bfb      	ldrb	r3, [r7, #15]
  8000820:	3b20      	subs	r3, #32
  8000822:	73fb      	strb	r3, [r7, #15]
-    }
-    if ((comando >= 'a') && (comando <= 'z')){
+	}
+
+	if ((comando >= 'a') && (comando <= 'z'))
  8000824:	7bbb      	ldrb	r3, [r7, #14]
  8000826:	2b60      	cmp	r3, #96	@ 0x60
  8000828:	d905      	bls.n	8000836 <PC_Procesar_Comando+0x56>
  800082a:	7bbb      	ldrb	r3, [r7, #14]
  800082c:	2b7a      	cmp	r3, #122	@ 0x7a
  800082e:	d802      	bhi.n	8000836 <PC_Procesar_Comando+0x56>
-        comando = (char)(comando - ('a' - 'A'));
+	{
+		comando = (char)(comando - ('a' - 'A'));
  8000830:	7bbb      	ldrb	r3, [r7, #14]
  8000832:	3b20      	subs	r3, #32
  8000834:	73bb      	strb	r3, [r7, #14]
-    }
+	}
 
     switch (nodo) //identificamos nodo
  8000836:	7bfb      	ldrb	r3, [r7, #15]
@@ -1207,11 +1212,12 @@ static void PC_Procesar_Comando(void)
  8000862:	f040 8089 	bne.w	8000978 <PC_Procesar_Comando+0x198>
             {
                 case 'N': //estado de maestro
-                    if (*parametro != '\0') {
+                    if (*parametro != '\0')
  8000866:	68bb      	ldr	r3, [r7, #8]
  8000868:	781b      	ldrb	r3, [r3, #0]
  800086a:	2b00      	cmp	r3, #0
  800086c:	d003      	beq.n	8000876 <PC_Procesar_Comando+0x96>
+                    {
                         PC_Enviar( "ERROR: :MN NO RECIBE PARAMETROS\r\n");
  800086e:	488b      	ldr	r0, [pc, #556]	@ (8000a9c <PC_Procesar_Comando+0x2bc>)
  8000870:	f7ff fe08 	bl	8000484 <PC_Enviar>
@@ -1253,11 +1259,9 @@ static void PC_Procesar_Comando(void)
  80008a2:	e003      	b.n	80008ac <PC_Procesar_Comando+0xcc>
 
                         default:
-                            PC_Enviar(
+                            PC_Enviar("MAESTRO: ESTADO DESCONOCIDO\r\n");
  80008a4:	4882      	ldr	r0, [pc, #520]	@ (8000ab0 <PC_Procesar_Comando+0x2d0>)
  80008a6:	f7ff fded 	bl	8000484 <PC_Enviar>
-                                "MAESTRO: ESTADO DESCONOCIDO\r\n"
-                            );
                             break;
  80008aa:	bf00      	nop
                     }
@@ -1265,7 +1269,7 @@ static void PC_Procesar_Comando(void)
  80008ac:	e068      	b.n	8000980 <PC_Procesar_Comando+0x1a0>
 
                 case 'A': //activar/desactivar sistema
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor > 1))
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
  80008ae:	1dbb      	adds	r3, r7, #6
  80008b0:	4619      	mov	r1, r3
  80008b2:	68b8      	ldr	r0, [r7, #8]
@@ -1283,21 +1287,25 @@ static void PC_Procesar_Comando(void)
                         return;
  80008ca:	e2c1      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    if (valor == 0) { //desactivar
+
+                    if (valor == 0) //desactivar
  80008cc:	88fb      	ldrh	r3, [r7, #6]
  80008ce:	2b00      	cmp	r3, #0
  80008d0:	d11a      	bne.n	8000908 <PC_Procesar_Comando+0x128>
-                        if (estado_maestro == M_ALARMA)  {
+                    {
+                        if (estado_maestro == M_ALARMA)
  80008d2:	4b73      	ldr	r3, [pc, #460]	@ (8000aa0 <PC_Procesar_Comando+0x2c0>)
  80008d4:	781b      	ldrb	r3, [r3, #0]
  80008d6:	2b02      	cmp	r3, #2
  80008d8:	d103      	bne.n	80008e2 <PC_Procesar_Comando+0x102>
+                        {
                             PC_Enviar("ERROR: SISTEMA EN ALARMA.\r\n");
  80008da:	4877      	ldr	r0, [pc, #476]	@ (8000ab8 <PC_Procesar_Comando+0x2d8>)
  80008dc:	f7ff fdd2 	bl	8000484 <PC_Enviar>
                             return;
  80008e0:	e2b6      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                         }
+
                         inicio_dosif_automatico_pendiente = 0; //cancelar automaticos pendientes
  80008e2:	4b76      	ldr	r3, [pc, #472]	@ (8000abc <PC_Procesar_Comando+0x2dc>)
  80008e4:	2200      	movs	r2, #0
@@ -1322,14 +1330,14 @@ static void PC_Procesar_Comando(void)
                         PC_Enviar("MAESTRO: SISTEMA INACTIVO\r\n");
  8000900:	4872      	ldr	r0, [pc, #456]	@ (8000acc <PC_Procesar_Comando+0x2ec>)
  8000902:	f7ff fdbf 	bl	8000484 <PC_Enviar>
-                        tick_polling = HAL_GetTick();//reiniciar polling
+                        tick_polling = HAL_GetTick();  //reiniciar polling
                         nodo_polling_siguiente = ID_CINTA;
 
                         PC_Enviar("MAESTRO: SISTEMA ACTIVO\r\n" );
                     }
                     break;
  8000906:	e03b      	b.n	8000980 <PC_Procesar_Comando+0x1a0>
-                        if (estado_maestro == M_ALARMA){
+                        if (estado_maestro == M_ALARMA)
  8000908:	4b65      	ldr	r3, [pc, #404]	@ (8000aa0 <PC_Procesar_Comando+0x2c0>)
  800090a:	781b      	ldrb	r3, [r3, #0]
  800090c:	2b02      	cmp	r3, #2
@@ -1343,7 +1351,7 @@ static void PC_Procesar_Comando(void)
  8000918:	4b61      	ldr	r3, [pc, #388]	@ (8000aa0 <PC_Procesar_Comando+0x2c0>)
  800091a:	2201      	movs	r2, #1
  800091c:	701a      	strb	r2, [r3, #0]
-                        tick_polling = HAL_GetTick();//reiniciar polling
+                        tick_polling = HAL_GetTick();  //reiniciar polling
  800091e:	f002 f803 	bl	8002928 <HAL_GetTick>
  8000922:	4603      	mov	r3, r0
  8000924:	4a6a      	ldr	r2, [pc, #424]	@ (8000ad0 <PC_Procesar_Comando+0x2f0>)
@@ -1359,7 +1367,7 @@ static void PC_Procesar_Comando(void)
  8000934:	e024      	b.n	8000980 <PC_Procesar_Comando+0x1a0>
 
                 case 'R': //reset alarma maestro
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)) {
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1))
  8000936:	1dbb      	adds	r3, r7, #6
  8000938:	4619      	mov	r1, r3
  800093a:	68b8      	ldr	r0, [r7, #8]
@@ -1370,23 +1378,26 @@ static void PC_Procesar_Comando(void)
  8000946:	88fb      	ldrh	r3, [r7, #6]
  8000948:	2b01      	cmp	r3, #1
  800094a:	d003      	beq.n	8000954 <PC_Procesar_Comando+0x174>
+                    {
                         PC_Enviar( "ERROR: USE :MR1\r\n" );
  800094c:	4863      	ldr	r0, [pc, #396]	@ (8000adc <PC_Procesar_Comando+0x2fc>)
  800094e:	f7ff fd99 	bl	8000484 <PC_Enviar>
                         return;
  8000952:	e27d      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    if (estado_maestro != M_ALARMA) {
+                    if (estado_maestro != M_ALARMA)
  8000954:	4b52      	ldr	r3, [pc, #328]	@ (8000aa0 <PC_Procesar_Comando+0x2c0>)
  8000956:	781b      	ldrb	r3, [r3, #0]
  8000958:	2b02      	cmp	r3, #2
  800095a:	d003      	beq.n	8000964 <PC_Procesar_Comando+0x184>
+                    {
                         PC_Enviar( "MAESTRO: NO HAY ALARMA ACTIVA\r\n" );
  800095c:	4860      	ldr	r0, [pc, #384]	@ (8000ae0 <PC_Procesar_Comando+0x300>)
  800095e:	f7ff fd91 	bl	8000484 <PC_Enviar>
                         return;
  8000962:	e275      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
+
                     parada_sistema_etapa = 0; //cancelamos secuencia de parada
  8000964:	4b58      	ldr	r3, [pc, #352]	@ (8000ac8 <PC_Procesar_Comando+0x2e8>)
  8000966:	2200      	movs	r2, #0
@@ -1396,7 +1407,7 @@ static void PC_Procesar_Comando(void)
  800096c:	2200      	movs	r2, #0
  800096e:	701a      	strb	r2, [r3, #0]
 
-                    PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n"  );
+                    PC_Enviar("MAESTRO: ALARMA RESETEADA. SISTEMA INACTIVO\r\n");
  8000970:	485c      	ldr	r0, [pc, #368]	@ (8000ae4 <PC_Procesar_Comando+0x304>)
  8000972:	f7ff fd87 	bl	8000484 <PC_Enviar>
                     break;
@@ -1442,18 +1453,19 @@ static void PC_Procesar_Comando(void)
  80009dc:	08000a47 	.word	0x08000a47
             {
                 case 'P': //ping pong
-                    if (*parametro != '\0') {
+                    if (*parametro != '\0')
  80009e0:	68bb      	ldr	r3, [r7, #8]
  80009e2:	781b      	ldrb	r3, [r3, #0]
  80009e4:	2b00      	cmp	r3, #0
  80009e6:	d003      	beq.n	80009f0 <PC_Procesar_Comando+0x210>
+                    {
                         PC_Enviar( "ERROR: :TP NO RECIBE PARAMETROS\r\n" );
  80009e8:	4840      	ldr	r0, [pc, #256]	@ (8000aec <PC_Procesar_Comando+0x30c>)
  80009ea:	f7ff fd4b 	bl	8000484 <PC_Enviar>
                         return;
  80009ee:	e22f      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PING,PING_PARAM_H,PING_PARAM_L,
+                    Maestro_Enviar_Trama(ID_TANQUE, CMD_PING, PING_PARAM_H, PING_PARAM_L, "TX -> TANQUE: PING\r\n");
  80009f0:	4b3f      	ldr	r3, [pc, #252]	@ (8000af0 <PC_Procesar_Comando+0x310>)
  80009f2:	9300      	str	r3, [sp, #0]
  80009f4:	2334      	movs	r3, #52	@ 0x34
@@ -1461,23 +1473,25 @@ static void PC_Procesar_Comando(void)
  80009f8:	2101      	movs	r1, #1
  80009fa:	2002      	movs	r0, #2
  80009fc:	f7ff fe64 	bl	80006c8 <Maestro_Enviar_Trama>
-                    		"TX -> TANQUE: PING\r\n");
+
                     break;
  8000a00:	e0d9      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'N': //consulta estado tanque
-                    if (*parametro != '\0'){
+                    if (*parametro != '\0')
  8000a02:	68bb      	ldr	r3, [r7, #8]
  8000a04:	781b      	ldrb	r3, [r3, #0]
  8000a06:	2b00      	cmp	r3, #0
  8000a08:	d003      	beq.n	8000a12 <PC_Procesar_Comando+0x232>
+                    {
                         PC_Enviar("ERROR: :TN NO RECIBE PARAMETROS\r\n" );
  8000a0a:	483a      	ldr	r0, [pc, #232]	@ (8000af4 <PC_Procesar_Comando+0x314>)
  8000a0c:	f7ff fd3a 	bl	8000484 <PC_Enviar>
                         return;
  8000a10:	e21e      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama( ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0,
+
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_PEDIR_ESTADO_TANQUE, 0, 0, "TX -> TANQUE: PEDIR ESTADO\r\n");
  8000a12:	4b39      	ldr	r3, [pc, #228]	@ (8000af8 <PC_Procesar_Comando+0x318>)
  8000a14:	9300      	str	r3, [sp, #0]
  8000a16:	2300      	movs	r3, #0
@@ -1485,23 +1499,24 @@ static void PC_Procesar_Comando(void)
  8000a1a:	2110      	movs	r1, #16
  8000a1c:	2002      	movs	r0, #2
  8000a1e:	f7ff fe53 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> TANQUE: PEDIR ESTADO\r\n");
                     break;
  8000a22:	e0c8      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'M': //consulta estado dosificador
-                    if (*parametro != '\0') {
+                    if (*parametro != '\0')
  8000a24:	68bb      	ldr	r3, [r7, #8]
  8000a26:	781b      	ldrb	r3, [r3, #0]
  8000a28:	2b00      	cmp	r3, #0
  8000a2a:	d003      	beq.n	8000a34 <PC_Procesar_Comando+0x254>
+                    {
                         PC_Enviar( "ERROR: :TM NO RECIBE PARAMETROS\r\n");
  8000a2c:	4833      	ldr	r0, [pc, #204]	@ (8000afc <PC_Procesar_Comando+0x31c>)
  8000a2e:	f7ff fd29 	bl	8000484 <PC_Enviar>
                         return;
  8000a32:	e20d      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PEDIR_ESTADO_DOSIF,0,0,
+
+                    Maestro_Enviar_Trama(ID_TANQUE,CMD_PEDIR_ESTADO_DOSIF, 0, 0, "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
  8000a34:	4b32      	ldr	r3, [pc, #200]	@ (8000b00 <PC_Procesar_Comando+0x320>)
  8000a36:	9300      	str	r3, [sp, #0]
  8000a38:	2300      	movs	r3, #0
@@ -1509,13 +1524,12 @@ static void PC_Procesar_Comando(void)
  8000a3c:	2111      	movs	r1, #17
  8000a3e:	2002      	movs	r0, #2
  8000a40:	f7ff fe42 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> TANQUE: PEDIR ESTADO DOSIFICADOR\r\n");
                     break;
  8000a44:	e0b7      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'S': //configurar setpoint
 
-                    if (PC_Parsear_UInt16(parametro, &valor) == 0U) {
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0)
  8000a46:	1dbb      	adds	r3, r7, #6
  8000a48:	4619      	mov	r1, r3
  8000a4a:	68b8      	ldr	r0, [r7, #8]
@@ -1523,13 +1537,18 @@ static void PC_Procesar_Comando(void)
  8000a50:	4603      	mov	r3, r0
  8000a52:	2b00      	cmp	r3, #0
  8000a54:	d103      	bne.n	8000a5e <PC_Procesar_Comando+0x27e>
+                    {
                         PC_Enviar("ERROR: SETPOINT INVALIDO\r\n");
  8000a56:	482b      	ldr	r0, [pc, #172]	@ (8000b04 <PC_Procesar_Comando+0x324>)
  8000a58:	f7ff fd14 	bl	8000484 <PC_Enviar>
                         return;
  8000a5c:	e1f8      	b.n	8000e50 <PC_Procesar_Comando+0x670>
-                    }
-                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+
+                    /*15 decimal = 0x000F
+					PARAM_H = 0x00
+					PARAM_L = 0x0F*/
+
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_SETPOINT, (uint8_t)(valor >> 8), (uint8_t)(valor & 0xFF), "TX -> TANQUE: CONFIGURAR SETPOINT\r\n" );
  8000a5e:	88fb      	ldrh	r3, [r7, #6]
  8000a60:	0a1b      	lsrs	r3, r3, #8
  8000a62:	b29b      	uxth	r3, r3
@@ -1541,12 +1560,11 @@ static void PC_Procesar_Comando(void)
  8000a6e:	2112      	movs	r1, #18
  8000a70:	2002      	movs	r0, #2
  8000a72:	f7ff fe29 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> TANQUE: CONFIGURAR SETPOINT\r\n" );
                     break;
  8000a76:	e09e      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'R': //configurar receta
-                    if (PC_Parsear_UInt16(parametro, &valor) == 0U){
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0)
  8000a78:	1dbb      	adds	r3, r7, #6
  8000a7a:	4619      	mov	r1, r3
  8000a7c:	68b8      	ldr	r0, [r7, #8]
@@ -1554,6 +1572,7 @@ static void PC_Procesar_Comando(void)
  8000a82:	4603      	mov	r3, r0
  8000a84:	2b00      	cmp	r3, #0
  8000a86:	d143      	bne.n	8000b10 <PC_Procesar_Comando+0x330>
+                    {
                         PC_Enviar( "ERROR: RECETA INVALIDA\r\n");
  8000a88:	4820      	ldr	r0, [pc, #128]	@ (8000b0c <PC_Procesar_Comando+0x32c>)
  8000a8a:	f7ff fcfb 	bl	8000484 <PC_Enviar>
@@ -1593,7 +1612,7 @@ static void PC_Procesar_Comando(void)
  8000b0c:	08005558 	.word	0x08005558
                     }
 
-                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_RECETA, (uint8_t)(valor >> 8U), (uint8_t)(valor & 0xFFU),
+                    Maestro_Enviar_Trama( ID_TANQUE, CMD_TANQUE_RECETA, (uint8_t)(valor >> 8), (uint8_t)(valor & 0xFF), "TX -> TANQUE: CONFIGURAR RECETA\r\n");
  8000b10:	88fb      	ldrh	r3, [r7, #6]
  8000b12:	0a1b      	lsrs	r3, r3, #8
  8000b14:	b29b      	uxth	r3, r3
@@ -1605,12 +1624,11 @@ static void PC_Procesar_Comando(void)
  8000b20:	2113      	movs	r1, #19
  8000b22:	2002      	movs	r0, #2
  8000b24:	f7ff fdd0 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> TANQUE: CONFIGURAR RECETA\r\n");
                     break;
  8000b28:	e045      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'I': //abortar,iniciar dosificacion
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor > 1U)){
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
  8000b2a:	1dbb      	adds	r3, r7, #6
  8000b2c:	4619      	mov	r1, r3
  8000b2e:	68b8      	ldr	r0, [r7, #8]
@@ -1621,6 +1639,7 @@ static void PC_Procesar_Comando(void)
  8000b3a:	88fb      	ldrh	r3, [r7, #6]
  8000b3c:	2b01      	cmp	r3, #1
  8000b3e:	d903      	bls.n	8000b48 <PC_Procesar_Comando+0x368>
+                    {
                         PC_Enviar( "ERROR: USE :TI0 O :TI1\r\n");
  8000b40:	48a1      	ldr	r0, [pc, #644]	@ (8000dc8 <PC_Procesar_Comando+0x5e8>)
  8000b42:	f7ff fc9f 	bl	8000484 <PC_Enviar>
@@ -1628,7 +1647,7 @@ static void PC_Procesar_Comando(void)
  8000b46:	e183      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
 
-                    if ((valor == 1) && (estado_maestro != M_ACTIVO)) { //inicia si M_ACTIVO
+                    if ((valor == 1) && (estado_maestro != M_ACTIVO)) //inicia si M_ACTIVO
  8000b48:	88fb      	ldrh	r3, [r7, #6]
  8000b4a:	2b01      	cmp	r3, #1
  8000b4c:	d107      	bne.n	8000b5e <PC_Procesar_Comando+0x37e>
@@ -1636,13 +1655,15 @@ static void PC_Procesar_Comando(void)
  8000b50:	781b      	ldrb	r3, [r3, #0]
  8000b52:	2b01      	cmp	r3, #1
  8000b54:	d003      	beq.n	8000b5e <PC_Procesar_Comando+0x37e>
+                    {
                         PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
  8000b56:	489e      	ldr	r0, [pc, #632]	@ (8000dd0 <PC_Procesar_Comando+0x5f0>)
  8000b58:	f7ff fc94 	bl	8000484 <PC_Enviar>
                         return;
  8000b5c:	e178      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama( ID_TANQUE,CMD_TANQUE_CONTROL_DOSIF,0,(uint8_t)valor,(valor == 1)
+
+                    Maestro_Enviar_Trama( ID_TANQUE,CMD_TANQUE_CONTROL_DOSIF, 0, (uint8_t)valor, (valor == 1)
  8000b5e:	88fb      	ldrh	r3, [r7, #6]
  8000b60:	b2da      	uxtb	r2, r3
  8000b62:	88fb      	ldrh	r3, [r7, #6]
@@ -1663,7 +1684,7 @@ static void PC_Procesar_Comando(void)
  8000b7c:	e01b      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
 
                 case 'A': //resetea alarma de tanque
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1)){
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1))
  8000b7e:	1dbb      	adds	r3, r7, #6
  8000b80:	4619      	mov	r1, r3
  8000b82:	68b8      	ldr	r0, [r7, #8]
@@ -1674,13 +1695,14 @@ static void PC_Procesar_Comando(void)
  8000b8e:	88fb      	ldrh	r3, [r7, #6]
  8000b90:	2b01      	cmp	r3, #1
  8000b92:	d003      	beq.n	8000b9c <PC_Procesar_Comando+0x3bc>
+                    {
                         PC_Enviar( "ERROR: USE :TA1\r\n");
  8000b94:	4891      	ldr	r0, [pc, #580]	@ (8000ddc <PC_Procesar_Comando+0x5fc>)
  8000b96:	f7ff fc75 	bl	8000484 <PC_Enviar>
                         return;
  8000b9a:	e159      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama(ID_TANQUE,  CMD_TANQUE_RESET_ALARMA,0,1,
+                    Maestro_Enviar_Trama(ID_TANQUE,  CMD_TANQUE_RESET_ALARMA, 0, 1, "TX -> TANQUE: RESETEAR ALARMA\r\n"  );
  8000b9c:	4b90      	ldr	r3, [pc, #576]	@ (8000de0 <PC_Procesar_Comando+0x600>)
  8000b9e:	9300      	str	r3, [sp, #0]
  8000ba0:	2301      	movs	r3, #1
@@ -1688,7 +1710,6 @@ static void PC_Procesar_Comando(void)
  8000ba4:	2115      	movs	r1, #21
  8000ba6:	2002      	movs	r0, #2
  8000ba8:	f7ff fd8e 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> TANQUE: RESETEAR ALARMA\r\n"  );
 
                     break;
  8000bac:	e003      	b.n	8000bb6 <PC_Procesar_Comando+0x3d6>
@@ -1733,11 +1754,12 @@ static void PC_Procesar_Comando(void)
  8000c14:	08000c8d 	.word	0x08000c8d
             {
                 case 'P': //ping pong
-                    if (*parametro != '\0') {
+                    if (*parametro != '\0')
  8000c18:	68bb      	ldr	r3, [r7, #8]
  8000c1a:	781b      	ldrb	r3, [r3, #0]
  8000c1c:	2b00      	cmp	r3, #0
  8000c1e:	d003      	beq.n	8000c28 <PC_Procesar_Comando+0x448>
+                    {
                         PC_Enviar( "ERROR: :CP NO RECIBE PARAMETROS\r\n" );
  8000c20:	4871      	ldr	r0, [pc, #452]	@ (8000de8 <PC_Procesar_Comando+0x608>)
  8000c22:	f7ff fc2f 	bl	8000484 <PC_Enviar>
@@ -1745,7 +1767,7 @@ static void PC_Procesar_Comando(void)
  8000c26:	e113      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
 
-                    Maestro_Enviar_Trama( ID_CINTA, CMD_PING, PING_PARAM_H, PING_PARAM_L,
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PING, PING_PARAM_H, PING_PARAM_L, "TX -> CINTA: PING\r\n");
  8000c28:	4b70      	ldr	r3, [pc, #448]	@ (8000dec <PC_Procesar_Comando+0x60c>)
  8000c2a:	9300      	str	r3, [sp, #0]
  8000c2c:	2334      	movs	r3, #52	@ 0x34
@@ -1753,23 +1775,23 @@ static void PC_Procesar_Comando(void)
  8000c30:	2101      	movs	r1, #1
  8000c32:	2001      	movs	r0, #1
  8000c34:	f7ff fd48 	bl	80006c8 <Maestro_Enviar_Trama>
-                    		"TX -> CINTA: PING\r\n");
                     break;
  8000c38:	e105      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
                 case 'N': //consultar estado cinta
-                    if (*parametro != '\0'){
+                    if (*parametro != '\0')
  8000c3a:	68bb      	ldr	r3, [r7, #8]
  8000c3c:	781b      	ldrb	r3, [r3, #0]
  8000c3e:	2b00      	cmp	r3, #0
  8000c40:	d003      	beq.n	8000c4a <PC_Procesar_Comando+0x46a>
+                    {
                         PC_Enviar("ERROR: :CN NO RECIBE PARAMETROS\r\n");
  8000c42:	486b      	ldr	r0, [pc, #428]	@ (8000df0 <PC_Procesar_Comando+0x610>)
  8000c44:	f7ff fc1e 	bl	8000484 <PC_Enviar>
                         return;
  8000c48:	e102      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama( ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0,
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_PEDIR_ESTADO_CINTA, 0, 0, "TX -> CINTA: PEDIR ESTADO\r\n");
  8000c4a:	4b6a      	ldr	r3, [pc, #424]	@ (8000df4 <PC_Procesar_Comando+0x614>)
  8000c4c:	9300      	str	r3, [sp, #0]
  8000c4e:	2300      	movs	r3, #0
@@ -1777,12 +1799,11 @@ static void PC_Procesar_Comando(void)
  8000c52:	2120      	movs	r1, #32
  8000c54:	2001      	movs	r0, #1
  8000c56:	f7ff fd37 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> CINTA: PEDIR ESTADO\r\n");
                     break;
  8000c5a:	e0f4      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
                 case 'C': // :CC1 configuracion balanza
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1))
  8000c5c:	1dbb      	adds	r3, r7, #6
  8000c5e:	4619      	mov	r1, r3
  8000c60:	68b8      	ldr	r0, [r7, #8]
@@ -1793,13 +1814,14 @@ static void PC_Procesar_Comando(void)
  8000c6c:	88fb      	ldrh	r3, [r7, #6]
  8000c6e:	2b01      	cmp	r3, #1
  8000c70:	d003      	beq.n	8000c7a <PC_Procesar_Comando+0x49a>
+                    {
                         PC_Enviar("ERROR: USE :CC1\r\n");
  8000c72:	4861      	ldr	r0, [pc, #388]	@ (8000df8 <PC_Procesar_Comando+0x618>)
  8000c74:	f7ff fc06 	bl	8000484 <PC_Enviar>
                         return;
  8000c78:	e0ea      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CONFIGURAR, 0, 1,
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CONFIGURAR, 0, 1, "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
  8000c7a:	4b60      	ldr	r3, [pc, #384]	@ (8000dfc <PC_Procesar_Comando+0x61c>)
  8000c7c:	9300      	str	r3, [sp, #0]
  8000c7e:	2301      	movs	r3, #1
@@ -1807,12 +1829,11 @@ static void PC_Procesar_Comando(void)
  8000c82:	2121      	movs	r1, #33	@ 0x21
  8000c84:	2001      	movs	r0, #1
  8000c86:	f7ff fd1f 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> CINTA: ENTRAR EN CONFIGURACION\r\n");
                     break;
  8000c8a:	e0dc      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
                 case 'T': //tara :CT1
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor != 1U)) {
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor != 1))
  8000c8c:	1dbb      	adds	r3, r7, #6
  8000c8e:	4619      	mov	r1, r3
  8000c90:	68b8      	ldr	r0, [r7, #8]
@@ -1823,13 +1844,14 @@ static void PC_Procesar_Comando(void)
  8000c9c:	88fb      	ldrh	r3, [r7, #6]
  8000c9e:	2b01      	cmp	r3, #1
  8000ca0:	d003      	beq.n	8000caa <PC_Procesar_Comando+0x4ca>
+                    {
                         PC_Enviar("ERROR: USE :CT1\r\n" );
  8000ca2:	4857      	ldr	r0, [pc, #348]	@ (8000e00 <PC_Procesar_Comando+0x620>)
  8000ca4:	f7ff fbee 	bl	8000484 <PC_Enviar>
                         return;
  8000ca8:	e0d2      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_TARA, 0, 1,
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_TARA, 0, 1, "TX -> CINTA: HACER TARA\r\n");
  8000caa:	4b56      	ldr	r3, [pc, #344]	@ (8000e04 <PC_Procesar_Comando+0x624>)
  8000cac:	9300      	str	r3, [sp, #0]
  8000cae:	2301      	movs	r3, #1
@@ -1837,12 +1859,11 @@ static void PC_Procesar_Comando(void)
  8000cb2:	2122      	movs	r1, #34	@ 0x22
  8000cb4:	2001      	movs	r0, #1
  8000cb6:	f7ff fd07 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> CINTA: HACER TARA\r\n");
                     break;
  8000cba:	e0c4      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
                 case 'F': //calibracion con peso patron
-                    if (PC_Parsear_UInt16(parametro, &valor) == 0) {
+                    if (PC_Parsear_UInt16(parametro, &valor) == 0)
  8000cbc:	1dbb      	adds	r3, r7, #6
  8000cbe:	4619      	mov	r1, r3
  8000cc0:	68b8      	ldr	r0, [r7, #8]
@@ -1850,13 +1871,14 @@ static void PC_Procesar_Comando(void)
  8000cc6:	4603      	mov	r3, r0
  8000cc8:	2b00      	cmp	r3, #0
  8000cca:	d103      	bne.n	8000cd4 <PC_Procesar_Comando+0x4f4>
+                    {
                         PC_Enviar("ERROR: PESO DE CALIBRACION INVALIDO\r\n" );
  8000ccc:	484e      	ldr	r0, [pc, #312]	@ (8000e08 <PC_Procesar_Comando+0x628>)
  8000cce:	f7ff fbd9 	bl	8000484 <PC_Enviar>
                         return;
  8000cd2:	e0bd      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CALIBRAR,(uint8_t)(valor >> 8U),(uint8_t)(valor & 0xFFU),
+                    Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_CALIBRAR,(uint8_t)(valor >> 8),(uint8_t)(valor & 0xFF), "TX -> CINTA: CALIBRAR HX711\r\n");
  8000cd4:	88fb      	ldrh	r3, [r7, #6]
  8000cd6:	0a1b      	lsrs	r3, r3, #8
  8000cd8:	b29b      	uxth	r3, r3
@@ -1868,12 +1890,11 @@ static void PC_Procesar_Comando(void)
  8000ce4:	2123      	movs	r1, #35	@ 0x23
  8000ce6:	2001      	movs	r0, #1
  8000ce8:	f7ff fcee 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> CINTA: CALIBRAR HX711\r\n");
                     break;
  8000cec:	e0ab      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
                 case 'A': // Desactivar / activar cinta
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1)){
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor > 1))
  8000cee:	1dbb      	adds	r3, r7, #6
  8000cf0:	4619      	mov	r1, r3
  8000cf2:	68b8      	ldr	r0, [r7, #8]
@@ -1884,13 +1905,14 @@ static void PC_Procesar_Comando(void)
  8000cfe:	88fb      	ldrh	r3, [r7, #6]
  8000d00:	2b01      	cmp	r3, #1
  8000d02:	d903      	bls.n	8000d0c <PC_Procesar_Comando+0x52c>
+                    {
                         PC_Enviar("ERROR: USE :CA0 O :CA1\r\n");
  8000d04:	4842      	ldr	r0, [pc, #264]	@ (8000e10 <PC_Procesar_Comando+0x630>)
  8000d06:	f7ff fbbd 	bl	8000484 <PC_Enviar>
                         return;
  8000d0a:	e0a1      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    if ((valor == 1U) &&(estado_maestro != M_ACTIVO)) {
+                    if ((valor == 1) &&(estado_maestro != M_ACTIVO))
  8000d0c:	88fb      	ldrh	r3, [r7, #6]
  8000d0e:	2b01      	cmp	r3, #1
  8000d10:	d107      	bne.n	8000d22 <PC_Procesar_Comando+0x542>
@@ -1898,12 +1920,14 @@ static void PC_Procesar_Comando(void)
  8000d14:	781b      	ldrb	r3, [r3, #0]
  8000d16:	2b01      	cmp	r3, #1
  8000d18:	d003      	beq.n	8000d22 <PC_Procesar_Comando+0x542>
+                    {
                     	PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
  8000d1a:	482d      	ldr	r0, [pc, #180]	@ (8000dd0 <PC_Procesar_Comando+0x5f0>)
  8000d1c:	f7ff fbb2 	bl	8000484 <PC_Enviar>
                         return;
  8000d20:	e096      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
+
                     Maestro_Enviar_Trama(ID_CINTA,CMD_CINTA_ACTIVAR, 0, (uint8_t)valor, (valor == 1)
  8000d22:	88fb      	ldrh	r3, [r7, #6]
  8000d24:	b2da      	uxtb	r2, r3
@@ -1923,8 +1947,9 @@ static void PC_Procesar_Comando(void)
                             : "TX -> CINTA: DESACTIVAR\r\n");
                     break;
  8000d40:	e081      	b.n	8000e46 <PC_Procesar_Comando+0x666>
+
                 case 'B':// :CB0 / :CB1 Detener / arrancar banda
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) ||(valor > 1U)) {
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) ||(valor > 1))
  8000d42:	1dbb      	adds	r3, r7, #6
  8000d44:	4619      	mov	r1, r3
  8000d46:	68b8      	ldr	r0, [r7, #8]
@@ -1935,13 +1960,15 @@ static void PC_Procesar_Comando(void)
  8000d52:	88fb      	ldrh	r3, [r7, #6]
  8000d54:	2b01      	cmp	r3, #1
  8000d56:	d903      	bls.n	8000d60 <PC_Procesar_Comando+0x580>
+                    {
                         PC_Enviar("ERROR: USE :CB0 O :CB1\r\n" );
  8000d58:	4830      	ldr	r0, [pc, #192]	@ (8000e1c <PC_Procesar_Comando+0x63c>)
  8000d5a:	f7ff fb93 	bl	8000484 <PC_Enviar>
                         return;
  8000d5e:	e077      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    if ((valor == 1U) && (estado_maestro != M_ACTIVO))  {
+
+                    if ((valor == 1U) && (estado_maestro != M_ACTIVO))
  8000d60:	88fb      	ldrh	r3, [r7, #6]
  8000d62:	2b01      	cmp	r3, #1
  8000d64:	d107      	bne.n	8000d76 <PC_Procesar_Comando+0x596>
@@ -1949,7 +1976,8 @@ static void PC_Procesar_Comando(void)
  8000d68:	781b      	ldrb	r3, [r3, #0]
  8000d6a:	2b01      	cmp	r3, #1
  8000d6c:	d003      	beq.n	8000d76 <PC_Procesar_Comando+0x596>
-                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n"  );
+                    {
+                        PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n");
  8000d6e:	4818      	ldr	r0, [pc, #96]	@ (8000dd0 <PC_Procesar_Comando+0x5f0>)
  8000d70:	f7ff fb88 	bl	8000484 <PC_Enviar>
                         return;
@@ -1978,7 +2006,7 @@ static void PC_Procesar_Comando(void)
 
                 case 'D': // CD1 continuar pesaje
 
-                    if ((PC_Parsear_UInt16(parametro, &valor) == 0U) || (valor != 1U)){ PC_Enviar(
+                    if ((PC_Parsear_UInt16(parametro, &valor) == 0) || (valor != 1))
  8000d96:	1dbb      	adds	r3, r7, #6
  8000d98:	4619      	mov	r1, r3
  8000d9a:	68b8      	ldr	r0, [r7, #8]
@@ -1989,17 +2017,19 @@ static void PC_Procesar_Comando(void)
  8000da6:	88fb      	ldrh	r3, [r7, #6]
  8000da8:	2b01      	cmp	r3, #1
  8000daa:	d003      	beq.n	8000db4 <PC_Procesar_Comando+0x5d4>
+                    {
+                    	PC_Enviar("ERROR: USE :CD1\r\n");
  8000dac:	481e      	ldr	r0, [pc, #120]	@ (8000e28 <PC_Procesar_Comando+0x648>)
  8000dae:	f7ff fb69 	bl	8000484 <PC_Enviar>
-                            "ERROR: USE :CD1\r\n" );
                         return;
  8000db2:	e04d      	b.n	8000e50 <PC_Procesar_Comando+0x670>
                     }
-                    if (estado_maestro != M_ACTIVO){
+                    if (estado_maestro != M_ACTIVO)
  8000db4:	4b05      	ldr	r3, [pc, #20]	@ (8000dcc <PC_Procesar_Comando+0x5ec>)
  8000db6:	781b      	ldrb	r3, [r3, #0]
  8000db8:	2b01      	cmp	r3, #1
  8000dba:	d037      	beq.n	8000e2c <PC_Procesar_Comando+0x64c>
+                    {
                         PC_Enviar( "ERROR: EL SISTEMA NO ESTA ACTIVO\r\n" );
  8000dbc:	4804      	ldr	r0, [pc, #16]	@ (8000dd0 <PC_Procesar_Comando+0x5f0>)
  8000dbe:	f7ff fb61 	bl	8000484 <PC_Enviar>
@@ -2032,7 +2062,7 @@ static void PC_Procesar_Comando(void)
  8000e24:	0800583c 	.word	0x0800583c
  8000e28:	0800585c 	.word	0x0800585c
                     }
-                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1,
+                    Maestro_Enviar_Trama( ID_CINTA, CMD_CINTA_CONTINUAR_PESAJE, 0, 1, "TX -> CINTA: CONTINUAR PESAJE\r\n" );
  8000e2c:	4b0a      	ldr	r3, [pc, #40]	@ (8000e58 <PC_Procesar_Comando+0x678>)
  8000e2e:	9300      	str	r3, [sp, #0]
  8000e30:	2301      	movs	r3, #1
@@ -2040,7 +2070,6 @@ static void PC_Procesar_Comando(void)
  8000e34:	2126      	movs	r1, #38	@ 0x26
  8000e36:	2001      	movs	r0, #1
  8000e38:	f7ff fc46 	bl	80006c8 <Maestro_Enviar_Trama>
-                        "TX -> CINTA: CONTINUAR PESAJE\r\n" );
                     break;
  8000e3c:	e003      	b.n	8000e46 <PC_Procesar_Comando+0x666>
 
@@ -2584,7 +2613,8 @@ static void Maestro_Procesar_Polling(void)
  8001142:	71bb      	strb	r3, [r7, #6]
  8001144:	e02d      	b.n	80011a2 <Maestro_Procesar_Polling+0xca>
         }
-    } else //polling de eventos automáticos
+    }
+    else //polling de eventos automáticos
     {
         //se realizan solo con el sistema en activo
         if (estado_maestro != M_ACTIVO)
@@ -2697,7 +2727,7 @@ static void Maestro_Procesar_Polling(void)
  80011c8:	2200      	movs	r2, #0
  80011ca:	801a      	strh	r2, [r3, #0]
 
-    flag_consulta_supervision = consulta_supervision;
+    flag_consulta_supervision = consulta_supervision;  //si se realizó consulta de supervisión → consulta_supervision = 1
  80011cc:	4a2b      	ldr	r2, [pc, #172]	@ (800127c <Maestro_Procesar_Polling+0x1a4>)
  80011ce:	797b      	ldrb	r3, [r7, #5]
  80011d0:	7013      	strb	r3, [r2, #0]
