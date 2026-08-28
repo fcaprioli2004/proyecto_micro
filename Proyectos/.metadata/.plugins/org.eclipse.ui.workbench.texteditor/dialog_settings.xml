@@ -3,6 +3,9 @@
 	<item key="hasShownOverlayPopupBefore" value="true"/>
 	<item key="replaceBarOpen" value="true"/>
 	<list key="searchhistory">
+		<item value="pulsos_caudal"/>
+		<item value="Procesar_Clasi"/>
+		<item value="DOSIF_LLENANDO"/>
 		<item value="CMD_TANQUE_CONTROL_DOSIF"/>
 		<item value="Maestro_Procesar_Parada_Alarma"/>
 		<item value="Maestro_Procesar_Parada_Alarma()"/>
@@ -15,8 +18,6 @@
 		<item value="continuar_cinta_automatico_pendiente"/>
 		<item value="mensaje_pc"/>
 		<item value="pc_rx_byte"/>
-		<item value="pc_comando_listo"/>
-		<item value="timeout_respuesta_ms"/>
 	</list>
 	<list key="replacehistory">
 		<item value="Maestro_Procesar_Parada_Sistema()"/>

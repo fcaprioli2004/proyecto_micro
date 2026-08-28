@@ -864,7 +864,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     }
 }
 
-static void interpretar_comando(void) //interprete de comandos por UART local
+static void interpretar_comando(void) //interprete de comandos por UART local //aa
 {
     uint32_t valor;
     char comando;

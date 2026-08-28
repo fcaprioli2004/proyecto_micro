@@ -2002,17 +2002,10 @@ static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, real
  8000d86:	e014      	b.n	8000db2 <iniciar_dosificacion+0x9a>
     }
 
-    /*primask = __get_PRIMASK();
-    __disable_irq();*/
-
     pulsos_caudal = 0;
  8000d88:	4b13      	ldr	r3, [pc, #76]	@ (8000dd8 <iniciar_dosificacion+0xc0>)
  8000d8a:	2200      	movs	r2, #0
  8000d8c:	601a      	str	r2, [r3, #0]
-    /*if (primask == 0)
-    {
-        __enable_irq();
-    }*/
 
     if (Hay_Botella() == 1)
  8000d8e:	f7ff ffb3 	bl	8000cf8 <Hay_Botella>
@@ -2061,7 +2054,6 @@ static void abortar_dosificacion(void)
 {
  8000de4:	b580      	push	{r7, lr}
  8000de6:	af00      	add	r7, sp, #0
-    //uint32_t primask = __get_PRIMASK();
 
     detener_bomba_dosificador();
  8000de8:	f000 f9d4 	bl	8001194 <detener_bomba_dosificador>
@@ -2074,17 +2066,10 @@ static void abortar_dosificacion(void)
  8000df4:	2200      	movs	r2, #0
  8000df6:	701a      	strb	r2, [r3, #0]
 
-    //__disable_irq();
-
     pulsos_caudal = 0;
  8000df8:	4b04      	ldr	r3, [pc, #16]	@ (8000e0c <abortar_dosificacion+0x28>)
  8000dfa:	2200      	movs	r2, #0
  8000dfc:	601a      	str	r2, [r3, #0]
-
-    /*if (primask == 0U)
-    {
-        __enable_irq();
-    }*/
 }
  8000dfe:	bf00      	nop
  8000e00:	bd80      	pop	{r7, pc}
@@ -2792,7 +2777,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 08001254 <interpretar_comando>:
 
-static void interpretar_comando(void) //interprete de comandos por UART local
+static void interpretar_comando(void) //interprete de comandos por UART local //aa
 {
  8001254:	b580      	push	{r7, lr}
  8001256:	b082      	sub	sp, #8
