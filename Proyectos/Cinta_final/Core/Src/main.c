@@ -234,17 +234,18 @@ int main(void)
   }
 
   //Estado inicial
-  HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, Led_ON_Pin, GPIO_PIN_RESET); //leds
   HAL_GPIO_WritePin(GPIOA, Led_OFF_Pin, GPIO_PIN_SET);
   Estado = E_desactivado;
 
-  HX711_Init();
+  HX711_Init(); //inicio balanza
 
-  HAL_GPIO_WritePin(GPIOB, DC_IN1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, DC_IN1_Pin, GPIO_PIN_RESET); // habilito motor_dc
   HAL_GPIO_WritePin(GPIOB, DC_IN2_Pin, GPIO_PIN_RESET);
   Set_DutyCycle_DC_PWM(0);
 
-  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++) //servos en reposo
+  {
       HAL_TIM_PWM_Start(clasificadores[i].timer,clasificadores[i].pwm_channel);
       __HAL_TIM_SET_COMPARE(clasificadores[i].timer,clasificadores[i].pwm_channel,clasificadores[i].pwm_reposo);
   }
@@ -260,7 +261,8 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  procesar_rs485_cinta();
 
-	  if (comando_listo == 1) {
+	  if (comando_listo == 1)
+	  {
 		  comando_listo = 0;
 		  interpretar_comando();
 	  }
@@ -346,7 +348,8 @@ void Clasificadores_Init(void)
     clasificadores[2].pwm_reposo = PULSE_REPOSO;
     clasificadores[2].pwm_abierto = PULSE_ABIERTO;
 
-    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+    for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
+    {
     	//configuro peso min y max
         clasificadores[i].peso_min = clasificadores[i].peso_objetivo -(clasificadores[i].peso_objetivo *
         							TOLERANCIA_PESO_PORCENTAJE) / 100;
@@ -371,116 +374,122 @@ void Clasificadores_Init(void)
 }
 
 void maquina_estados(void){
-	switch(Estado){
-		  	  case E_desactivado:
-		  		  break;
-			  case E_configurando:
-				  break;
-			  case E_activado:
-				  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){ // reviso si hay un sensor por procesar
-				      CLASIFICADOR *c = &clasificadores[i];
-
-				      if (c->sensor_pendiente != 0U){
-				          if ((HAL_GetTick() - c->tick_sensor) >= SENSOR_FILTRO_MS){
-				              c->sensor_pendiente = 0U;
-				              if (HAL_GPIO_ReadPin(c->sensor_port, c->sensor_pin) == GPIO_PIN_RESET){
-				                  Procesar_Clasificador(i); //hay objeto en el sensor, debo prosar segun clasificacion
-				              }
-				          }
-				      }
+	switch(Estado)
+	{
+		  case E_desactivado:
+			  break;
+		  case E_configurando:
+			  break;
+		  case E_activado:
+			  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)// reviso si hay un sensor por procesar
+			  {
+				  CLASIFICADOR *c = &clasificadores[i];
+				  if (c->sensor_pendiente != 0)
+				  {
+					  if ((HAL_GetTick() - c->tick_sensor) >= SENSOR_FILTRO_MS)
+					  {
+						  c->sensor_pendiente = 0;
+						  if (HAL_GPIO_ReadPin(c->sensor_port, c->sensor_pin) == GPIO_PIN_RESET)
+						  {
+							  Procesar_Clasificador(i); //hay objeto en el sensor, debo prosar segun clasificacion
+						  }
+					  }
 				  }
-				  switch(sub_Estado){
-				  	  case C_detenida:
-				  		  //espera a pasar a C_andando
-				  		  break;
-				  	case C_andando:
-				  	{
-				  	    HAL_StatusTypeDef estado_hx711;
-				  	    estado_hx711 =HX711_WeighNonBlocking(&weight);
-				  	    if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
-				  	        desactivar();
-				  	        Estado = E_error;
-				  	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-				  	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-				  	        break;
-				  	    }
-				  	    if (estado_hx711 == HAL_BUSY){
-				  	    	// no hay dato listo, da otro vuelta al programa sin bloquearlo, hasta que un dato este listo
-				  	        break;
-				  	    }
-				  	    if (weight >= PESO_DETECCION){ //detecto un objeto en la cinta
-				  	        cantidad_pesajes = 0;
+			  }
+			  switch(sub_Estado)
+			  {
+				 case C_detenida:
+					  //espera a pasar a C_andando
+					  break;
+				 case C_andando:
+				 {
+					HAL_StatusTypeDef estado_hx711;
+					estado_hx711 =HX711_WeighNonBlocking(&weight);
+					if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
+						desactivar();
+						Estado = E_error;
+						snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
+						HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+						break;
+					}
+					if (estado_hx711 == HAL_BUSY){
+						// no hay dato listo, da otro vuelta al programa sin bloquearlo, hasta que un dato este listo
+						break;
+					}
+					if (weight >= PESO_DETECCION) //detecto un objeto en la cinta
+					{
+						cantidad_pesajes = 0;
 
-				  	        rampa_pwm_objetivo = PWM_C_detenido;
-				  	        rampa_paso = 10;
-				  	        rampa_retardo_ms = 10;
-				  	        rampa_ultimo_tick = HAL_GetTick();
-				  	        sub_Estado_siguiente = C_esperando_maestro; //frena y espera la orden del maestro para confinuar co el pesaje
-				  	        sub_Estado = C_desacelerando;
-				  	    }
+						rampa_pwm_objetivo = PWM_C_detenido;
+						rampa_paso = 10;
+						rampa_retardo_ms = 10;
+						rampa_ultimo_tick = HAL_GetTick();
+						sub_Estado_siguiente = C_esperando_maestro; //frena y espera la orden del maestro para confinuar co el pesaje
+						sub_Estado = C_desacelerando;
+					}
+					break;
+				 }
+				 case C_pesando:
+					switch (Verificar_Peso_Por_Pasos(&weight))
+					{
+						case 1: // peso estable, almacenado en weight
+						{
+							uint8_t destino = Obtener_Destino(weight);
+							if (destino != 0){
+								if (FIFO_Agregar(&clasificadores[0].cola, destino) == 0){
+									desactivar();
+									Estado = E_error;
+									snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
+									HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+									break;
+								}
+							}
+							// clasificacion exitosa, la cinta continua andando
+							snprintf(buffer_tx,sizeof(buffer_tx),"Peso: %ld\r\n",(long)weight);
+							HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
 
-				  	    break;
-				  	}
-		 		 	 case C_pesando:
-		 		 		switch (Verificar_Peso_Por_Pasos(&weight)){
-		 		 		    case 1: // peso estable, almacenado en weight
-		 		 		    {
-		 		 		    	uint8_t destino = Obtener_Destino(weight);
-		 		 		    	if (destino != 0){
-		 		 		    		if (FIFO_Agregar(&clasificadores[0].cola, destino) == 0){
-		 		 		    	        desactivar();
-		 		 		    	        Estado = E_error;
-		 		 		    	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:COLA_LLENA\r\n");
-		 		 		    	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-		 		 		    	        break;
-		 		 		    	    }
-		 		 		    	}
-		 		 		    	// clasificacion exitosa, la cinta continua andando
-		 		 		        snprintf(buffer_tx,sizeof(buffer_tx),"Peso: %ld\r\n",(long)weight);
-		 		 		        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+							cinta_generar_aviso_peso(weight); //levanta flag para maestro
 
-	                            cinta_generar_aviso_peso(weight);
-
-		 		 		        rampa_pwm_objetivo = PWM_C_andando;
-		 		 		        rampa_paso = 10;
-		 		 		        rampa_retardo_ms = 10;
-		 		 		        rampa_ultimo_tick = HAL_GetTick();
-		 		 		        sub_Estado_siguiente = C_esperando_reinicio;
-		 		 		        sub_Estado = C_acelerando;
-		 		 		        tiempo_fin_pesaje = HAL_GetTick();
-		 		 		        break;
-		 		 		    }
-		 		 		    case 2:
-		 		 		        //Peso inestable
-		 		 		        break;
-		 		 		    case 3:
-		 		 		        //Todavía faltan pesajes
-		 		 		        break;
-		 		 		    case 0: //error
-		 		 		    default:
-		 		 		        desactivar();
-		 		 		        Estado = E_error;
-			 		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
-			 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-		 		 		        break;
-		 		 		}
-		 		 		 break;
-		 		 		case C_esperando_reinicio:
-		 		 		{
-		 		 		    if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1000){
-		 		 		        HAL_StatusTypeDef estado_hx711;
-		 		 		        estado_hx711 = HX711_WeighNonBlocking(&weight);
-		 		 		        if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
-		 		 		            desactivar();
-		 		 		            Estado = E_error;
-		 		 		            snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
-		 		 		            HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
-		 		 		        }else if ((estado_hx711 == HAL_OK) &&(weight < PESO_LIBRE)){
-		 		 		            sub_Estado = C_andando;
-		 		 		        } //si esata BUSY, da otra vuelta
-		 		 		    }
-		 		 		    break;
-		 		 		}
+							rampa_pwm_objetivo = PWM_C_andando; //comienza a anda denuevo
+							rampa_paso = 10;
+							rampa_retardo_ms = 10;
+							rampa_ultimo_tick = HAL_GetTick();
+							sub_Estado_siguiente = C_esperando_reinicio;
+							sub_Estado = C_acelerando;
+							tiempo_fin_pesaje = HAL_GetTick();
+							break;
+						}
+						case 2:
+							//Peso inestable, descarta y vuelve a tomar mediciones
+							break;
+						case 3:
+							//Todavía faltan pesajes
+							break;
+						case 0: //error
+						default:
+							desactivar();
+							Estado = E_error;
+							snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
+							HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+							break;
+						}
+						break;
+					case C_esperando_reinicio:
+					{
+						if ((HAL_GetTick() - tiempo_fin_pesaje) >= 1000){
+							HAL_StatusTypeDef estado_hx711;
+							estado_hx711 = HX711_WeighNonBlocking(&weight);
+							if (estado_hx711 == HAL_TIMEOUT ||estado_hx711 == HAL_ERROR){
+								desactivar();
+								Estado = E_error;
+								snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: HX711\r\n");
+								HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);
+							}else if ((estado_hx711 == HAL_OK) &&(weight < PESO_LIBRE)){
+								sub_Estado = C_andando;
+							} //si esata BUSY, da otra vuelta
+						}
+						break;
+					}
 					case C_desacelerando:
 					case C_acelerando:
 						if (HAL_GetTick() - rampa_ultimo_tick >= rampa_retardo_ms) {
@@ -504,14 +513,14 @@ void maquina_estados(void){
 							if (valor_pwm_actual == rampa_pwm_objetivo) {
 								if (rampa_pwm_objetivo == PWM_C_detenido) {
 									Set_DutyCycle_DC_PWM(0);
-				 		 	        snprintf(buffer_tx,sizeof(buffer_tx),":DETENIDO\r\n");
-				 		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+									snprintf(buffer_tx,sizeof(buffer_tx),":DETENIDO\r\n");
+									HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
 								}
 								sub_Estado = sub_Estado_siguiente;
 
-	                            if (sub_Estado == C_esperando_maestro) {
-	                                cinta_generar_aviso_esperando_maestro();
-	                            }
+								if (sub_Estado == C_esperando_maestro) {
+									cinta_generar_aviso_esperando_maestro();
+								}
 							}
 						}
 						break;
@@ -519,26 +528,27 @@ void maquina_estados(void){
 						break;
 
 					default:
-					    desactivar();
-					    Estado = E_error;
-					    break;
-		 		 }
-		 		 break;
-		 	 case E_error:
-		 		 break;
-		 	 default:
-		 		 desactivar();
-		 		 Estado=E_error;
-		 	        snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
-		 	        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
-		 		 break;
-	  	  }
+						desactivar();
+						Estado = E_error;
+						break;
+				 }
+			 break;
+		 case E_error:
+			 break;
+		 default:
+			 desactivar();
+			 Estado=E_error;
+			 snprintf(buffer_tx,sizeof(buffer_tx),"ERROR:\r\n");
+			 HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx, strlen(buffer_tx),HAL_MAX_DELAY);
+			 break;
+	}
 }
 static void cinta_generar_aviso_esperando_maestro(void)
 {
     aviso_esperando_secuencia++;
 
-    if (aviso_esperando_secuencia == 0){
+    if (aviso_esperando_secuencia == 0)
+    {
         aviso_esperando_secuencia = 1;
     }
     aviso_esperando_pendiente = 1;
@@ -790,28 +800,6 @@ static void procesar_rs485_cinta(void)
     }
 }
 
-void enviar_estado_uart(void)
-{
-    int longitud;
-
-    longitud = snprintf(
-        buffer_tx,
-        sizeof(buffer_tx),
-        ":Q,%u,%u,%lu,%lu,%ld\r\n",
-        (unsigned int)Estado,
-        (unsigned int)sub_Estado,
-        (unsigned long)objetos_ok,
-        (unsigned long)objetos_descarte,
-        (long)weight
-    );
-
-    if ((longitud > 0) && (longitud < (int)sizeof(buffer_tx)))
-    {
-        HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,(uint16_t)longitud,HAL_MAX_DELAY
-        );
-    }
-}
-
 void interpretar_comando(void){
 	switch (buffer_rx[0]){
 		case 'A':
@@ -929,9 +917,6 @@ void interpretar_comando(void){
 	            }
 			}
 			break;
-		case 'Q':
-		    enviar_estado_uart();
-		    break;
 		default:
 			break;
 	}
@@ -939,9 +924,10 @@ void interpretar_comando(void){
 
 void Set_DutyCycle_DC_PWM(uint16_t valor_pwm)
 {
-	if (valor_pwm <= 1000){
-	        TIM1->CCR1 = (uint16_t)(((uint32_t)valor_pwm * TIM1->ARR) / 1000);
-	    	valor_pwm_actual=valor_pwm;
+	if (valor_pwm <= 1000)
+	{
+	    TIM1->CCR1 =((uint32_t)valor_pwm * (TIM1->ARR + 1) + 500U) / 1000U;
+	    valor_pwm_actual = valor_pwm;
 	}
 }
 void desactivar(void){
@@ -956,12 +942,13 @@ void desactivar(void){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 
 	uint32_t ahora = HAL_GetTick();
-	for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++){
+	for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)
+	{
 	    CLASIFICADOR *c = &clasificadores[i];
 	    __HAL_TIM_SET_COMPARE(c->timer,c->pwm_channel,c->pwm_reposo); //cerrar servos
 	    FIFO_Limpiar(&c->cola); //vaciar cola
-	    c->sensor_pendiente = 0U; //eliminar eventos pendientes del sensor
-	    c->tick_sensor = 0U;
+	    c->sensor_pendiente = 0; //eliminar eventos pendientes del sensor
+	    c->tick_sensor = 0;
 	    c->ultimo_sensor = ahora;
 	}
 
@@ -1053,9 +1040,9 @@ uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor)
 
 void FIFO_Limpiar(FIFO *cola)
 {
-    cola->entrada = 0U;
-    cola->salida = 0U;
-    cola->cantidad = 0U;
+    cola->entrada = 0;
+    cola->salida = 0;
+    cola->cantidad = 0;
 }
 
 uint8_t Obtener_Destino(int32_t peso)
@@ -1103,10 +1090,7 @@ void Procesar_Clasificador(uint8_t indice)
                 );
             }
         } else {
-            /*
-             * Llegó al final sin encontrar su destino.
-             * Es un descarte.
-             */
+            // Llego al final sin encontrar su destino, es descarte
         }
     }
 }
