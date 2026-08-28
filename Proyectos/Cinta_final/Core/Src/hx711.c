@@ -61,16 +61,20 @@ int32_t getHX711(void)
     data = data << 1;
     HAL_GPIO_WritePin(SCK_PORT, SCK_PIN, GPIO_PIN_RESET);
     HX711_DelayUs(1);
+
     if(HAL_GPIO_ReadPin(DT_PORT, DT_PIN) == GPIO_PIN_SET)
       data ++;
   }
-  data ^= 0x800000;
+
+  data ^= 0x800000;  //son 3 bytes=24 bits
   HAL_GPIO_WritePin(SCK_PORT, SCK_PIN, GPIO_PIN_SET);
   HX711_DelayUs(1);
   HAL_GPIO_WritePin(SCK_PORT, SCK_PIN, GPIO_PIN_RESET);
   HX711_DelayUs(1);
+
   return data;
 }
+
 int32_t HX711_ReadAverage(uint16_t samples)
 {
     int64_t total = 0;
@@ -114,6 +118,7 @@ HAL_StatusTypeDef HX711_Tare(uint16_t samples)
     tare = average;
     return HAL_OK;
 }
+
 HAL_StatusTypeDef HX711_Calibrate(float referenceWeightMg,uint16_t samples)
 {
     int32_t average;
@@ -135,9 +140,10 @@ HAL_StatusTypeDef HX711_Calibrate(float referenceWeightMg,uint16_t samples)
     {
         return HAL_ERROR;
     }
-    calibrationFactor = referenceWeightMg / (float)referenceCounts;
+    calibrationFactor = referenceWeightMg / (float)referenceCounts;  //variable global
     return HAL_OK;
 }
+
 int32_t HX711_Weigh(uint16_t samples)
 {
     int32_t average;
@@ -237,7 +243,7 @@ HAL_StatusTypeDef HX711_WeighNonBlocking(int32_t *weightMg)
             esperando_dato = 1;
             inicio_espera = HAL_GetTick();
         }
-        if ((HAL_GetTick() - inicio_espera) >= 500U)
+        if ((HAL_GetTick() - inicio_espera) >= 500)
         {
             esperando_dato = 0;
             return HAL_TIMEOUT;

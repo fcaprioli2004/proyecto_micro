@@ -82,9 +82,9 @@ typedef enum
 
 typedef struct // estructura FIFO para procesar clasificacion
 {
-    uint8_t datos[FIFO_TAMANO];
-    uint8_t entrada;
-    uint8_t salida;
+    uint8_t datos[FIFO_TAMANO];  //destinos
+    uint8_t entrada;  //posicion donde agregar el proximo
+    uint8_t salida;  //posicion del mas antigui
     uint8_t cantidad;
 } FIFO;
 
@@ -384,9 +384,9 @@ void maquina_estados(void){
 			  for (uint8_t i = 0; i < CANTIDAD_CLASIFICADORES; i++)// reviso si hay un sensor por procesar
 			  {
 				  CLASIFICADOR *c = &clasificadores[i];
-				  if (c->sensor_pendiente != 0)
+				  if (c->sensor_pendiente != 0) //estaba el flag del sensor del clasificador correspondiente
 				  {
-					  if ((HAL_GetTick() - c->tick_sensor) >= SENSOR_FILTRO_MS)
+					  if ((HAL_GetTick() - c->tick_sensor) >= SENSOR_FILTRO_MS)   //paso el tiempo necesario del filtrp
 					  {
 						  c->sensor_pendiente = 0;
 						  if (HAL_GPIO_ReadPin(c->sensor_port, c->sensor_pin) == GPIO_PIN_RESET)
@@ -1001,7 +1001,8 @@ uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
 
     *peso_promedio = (int32_t)(suma / 10);
 
-    cantidad_pesajes = 0;
+    cantidad_pesajes = 0;  //reiniciamos la variable auxiliar
+
     if (*peso_promedio == 0) {
         return 2; // error de estabilidad
     }
@@ -1011,15 +1012,16 @@ uint8_t Verificar_Peso_Por_Pasos(int32_t *peso_promedio)
     }
     return 1; //ok
 }
+
 uint8_t FIFO_Agregar(FIFO *cola, uint8_t valor)
 {
     if (cola->cantidad >= FIFO_TAMANO){
         return 0;
     }
-    cola->datos[cola->entrada] = valor;
+    cola->datos[cola->entrada] = valor;  //datos son los destinos, entrada el indice del valor mas nuevo
     cola->entrada++;
     if (cola->entrada >= FIFO_TAMANO){
-        cola->entrada = 0;
+        cola->entrada = 0;  //vuelve a cero → buffer circular
     }
     cola->cantidad++;
     return 1;
@@ -1030,9 +1032,9 @@ uint8_t FIFO_Sacar(FIFO *cola, uint8_t *valor)
         return 0;
     }
     *valor = cola->datos[cola->salida];
-    cola->salida++;
+    cola->salida++;  //aumenta porque va siguiendo los datos que van entrando
     if (cola->salida >= FIFO_TAMANO)    {
-        cola->salida = 0;
+        cola->salida = 0;   //vuelve a cero porque es circular, igual que el anterior
     }
     cola->cantidad--;
     return 1;
@@ -1053,12 +1055,12 @@ uint8_t Obtener_Destino(int32_t peso)
             (peso <= clasificadores[i].peso_max))
         {
             objetos_ok++;
-            return clasificadores[i].id;
+            return clasificadores[i].id;  //obtendriamos 1,2 o 3, en funcion del destino que le toque
         }
     }
 
     objetos_descarte++;
-    return (CANTIDAD_CLASIFICADORES +1);
+    return (CANTIDAD_CLASIFICADORES +1);  //si es descarte, seria 4 en este caso
 }
 
 void Procesar_Clasificador(uint8_t indice)
@@ -1067,7 +1069,8 @@ void Procesar_Clasificador(uint8_t indice)
 
     uint8_t destino;
 
-    if (FIFO_Sacar(&c->cola, &destino) == 0){
+    if (FIFO_Sacar(&c->cola, &destino) == 0)  //singifica que la cantidad de datos registrados era 0 en la cola
+    {
 
         snprintf(buffer_tx,sizeof(buffer_tx),"ERROR: OBJETO NO CLASIFICADO %u\r\n",c->id);
         HAL_UART_Transmit(&huart1,(uint8_t *)buffer_tx,strlen(buffer_tx),HAL_MAX_DELAY);

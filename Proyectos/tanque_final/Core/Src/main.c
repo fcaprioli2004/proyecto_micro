@@ -605,15 +605,7 @@ static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, real
         return;
     }
 
-    /*primask = __get_PRIMASK();
-    __disable_irq();*/
-
     pulsos_caudal = 0;
-
-    /*if (primask == 0)
-    {
-        __enable_irq();
-    }*/
 
     if (Hay_Botella() == 1)
     {
@@ -630,20 +622,12 @@ static void iniciar_dosificacion(void) //se utiliza cuando se da :I1 local, real
 //detenemos la bomba y borramos los flags
 static void abortar_dosificacion(void)
 {
-    //uint32_t primask = __get_PRIMASK();
 
     detener_bomba_dosificador();
     estado_dosi = DOSIF_ESPERANDO_INICIO;
     evento_llenado_pendiente = 0;
 
-    //__disable_irq();
-
     pulsos_caudal = 0;
-
-    /*if (primask == 0U)
-    {
-        __enable_irq();
-    }*/
 }
 
 static void resetear_alarma_tanque(void)
